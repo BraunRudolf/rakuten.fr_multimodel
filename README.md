@@ -1,0 +1,1 @@
+# rakuten.fr_multimodel
