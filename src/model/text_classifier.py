@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from tor.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader
 class TextClassifier(nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_dim, num_classes):
         super(TextClassifier, self).__init__()
