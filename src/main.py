@@ -8,7 +8,7 @@ from features.build_features import DataImporter, TextPreprocessor, ImagePreproc
 from model.text_classifier import TextClassifier
 from model.train_model import train_text_model, validate_text_model, evaluate_text_model
 from dataset.dataset import RakutenTextDataset
-from dataset.preprocess import build_vocab, collate_fn
+from dataset.preprocess import build_vocab, load_vocab_and_nlp, collate_fn
 from callbacks.callbacks import LearningRateScheduler, EarlyStopping
 import mlflow
 import dotenv
@@ -45,9 +45,12 @@ train_file = "./data/preprocessed/train_dataset.csv"
 test_file = "./data/preprocessed/test_dataset.csv"
 val_file = "./data/preprocessed/val_dataset.csv"
 
-vocab, nlp = build_vocab(train_dataset['description'].to_list())
-#TODO: function to load or create vocab 
-
+save_path = os.getenv("SAVE_PATH")
+if len(os.listdir(save_path)) == 0:
+    # create new tokenizer + vocab
+    vocab, nlp = build_vocab(train_dataset['description'].to_list())
+else:
+    vocab, nlp = load_vocab_and_nlp(save_path)
 
 #TRAINING
 # Training parameters
