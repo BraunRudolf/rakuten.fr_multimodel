@@ -1,21 +1,26 @@
+import os
 import torch
-from torch import nn
+import torch.nn as nn
+import torch.optim as optim
 from torch.utils.data import DataLoader
-from torchtext.vocab import build_vocab_from_iterator
-from torch.nn.utils.rnn import pad_sequence 
-from sklearn.metrics import precision_score, recall_score, f1_score
 import pandas as pd
 from features.build_features import DataImporter, TextPreprocessor, ImagePreprocessor
-import spacy
-import numpy as np
 from model.text_classifier import TextClassifier
+from model.train_model import train_text_model, validate_text_model, evaluate_text_model
 from dataset.dataset import RakutenTextDataset
 from dataset.preprocess import build_vocab, collate_fn
+from callbacks.callbacks import LearningRateScheduler, EarlyStopping
+import mlflow
+import dotenv
 
+dotenv.load_dotenv()
+
+#TODO: Create function that creates splits based on pct
 data_importer = DataImporter()
 df = data_importer.load_data()
 X_train, X_val, X_test, y_train, y_val, y_test = data_importer.split_train_test(df)
 
+#TODO: create separate preprocessing functions and make usable by dataloader
 # Preprocess text and images
 text_preprocessor = TextPreprocessor()
 image_preprocessor = ImagePreprocessor()
@@ -26,6 +31,7 @@ image_preprocessor.preprocess_images_in_df(X_train)
 image_preprocessor.preprocess_images_in_df(X_val)
 image_preprocessor.preprocess_images_in_df(X_test)
 
+#TODO: remove in future
 # Write Preprocessed Files
 train_dataset = pd.concat([ X_train, y_train ], axis=1)
 test_dataset = pd.concat([ X_test, y_test ], axis=1)
@@ -34,11 +40,13 @@ train_dataset.to_csv('./data/preprocessed/train_dataset.csv')
 test_dataset.to_csv('./data/preprocessed/test_dataset.csv')
 val_dataset.to_csv('./data/preprocessed/val_dataset.csv')
 
+#TODO: only one file
 train_file = "./data/preprocessed/train_dataset.csv"
 test_file = "./data/preprocessed/test_dataset.csv"
 val_file = "./data/preprocessed/val_dataset.csv"
 
 vocab, nlp = build_vocab(train_dataset['description'].to_list())
+#TODO: function to load or create vocab 
 
 
 #TRAINING
@@ -48,107 +56,86 @@ embedding_dim = 250
 hidden_dim = 128
 num_classes = 27
 batch_size = 50
-num_epochs = 50
+num_epochs = 200
 learning_rate = 0.001
 
-# Create the model
-model = TextClassifier(vocab_size, embedding_dim, hidden_dim, num_classes)
+MLFLOW_SERVER_URI = os.getenv("MLFLOW_SERVER_URI")
+MLFLOW_EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME")
 
-# Define the loss function and optimizer
-criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+mlflow.set_tracking_uri(MLFLOW_SERVER_URI)
+mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
+
 
 # Create data loaders for the training and validation sets
 train_dataset = RakutenTextDataset(train_file, 'description', 'prdtypecode', vocab, nlp)
 valid_dataset = RakutenTextDataset(val_file, 'description', 'prdtypecode', vocab, nlp)
 
 train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
-valid_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
-
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-model.to(device)
-# Iterate over the training data for the specified number of epochs
-for epoch in range(num_epochs):
-    print("Start Training")
-    model.train()
-    total_loss = 0.0
-    total_samples = 0
-    correct = 0
-    for inputs, targets in train_loader:
-        optimizer.zero_grad()
-        inputs = inputs.to(device)
-        targets = targets.to(device)
-        outputs = model(inputs)
-        loss = criterion(outputs.view(-1, num_classes), targets.view(-1))
-        loss.backward()
-        optimizer.step()
-        #test 
-        predictions = torch.argmax(outputs, dim=1)
-        correct += (predictions == targets.view(-1)).sum().item()
-
-        total_loss += loss.item() * len(inputs)
-        total_samples += len(inputs)
-
-    # Evaluate on the validation set after every epoch
-    model.eval()
-    total_val_loss = 0.0
-    total_val_samples = 0
-    val_correct = 0
-    with torch.no_grad():
-        for inputs, targets in valid_loader:
-            inputs = inputs.to(device)
-            targets = targets.to(device)
-            outputs = model(inputs)
-            val_loss = criterion(outputs.view(-1, num_classes), targets.view(-1))
-            total_val_loss += val_loss.item() * len(inputs)
-            total_val_samples += len(inputs)
-
-            predictions = torch.argmax(outputs, dim=1)
-            val_correct += (predictions == targets.view(-1)).sum().item()
-
-    avg_loss = total_loss / total_samples
-    # test
-    avg_acc = 100* correct / total_samples
-    avg_val_acc = 100* val_correct / total_samples
-
-    avg_val_loss = total_val_loss / total_val_samples
-
-    print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {avg_loss:.4f}, Train Acc: {avg_acc:.4f}, Val Loss: {avg_val_loss:.4f}, Val Acc: {avg_val_acc:.4f}")
-
-### EVALUATION
-# Load the test set or a separate evaluation set
+val_loader = DataLoader(valid_dataset, batch_size=batch_size, shuffle=False, collate_fn=collate_fn)
 test_dataset = RakutenTextDataset(test_file, 'description', 'prdtypecode', vocab, nlp)# tokenizer.vocab, tokenizer)
 test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=True, collate_fn=collate_fn)
 
-# Use the trained model to make predictions on the test set
-model.eval()
-with torch.no_grad():
-    total_test_samples = 0
-    correct_predictions = 0
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-    predicted_labels_list = []
-    targets_list = []
+# Create the model
+model = TextClassifier(vocab_size, embedding_dim, hidden_dim, num_classes).to(device)
 
-    for inputs, targets in test_loader:
-        inputs = inputs.to(device)
-        targets = targets.to(device)
-        outputs = model(inputs)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
+criterion = nn.CrossEntropyLoss()
+# Define Callbacks
+scheduler = LearningRateScheduler(optimizer)
+early_stopping = EarlyStopping()
 
-        _, predicted_labels = torch.max(outputs, dim=1)
+params = {
+    "vocab_size": len(vocab),
+    "embedding_dim": embedding_dim,
+    "hidden_dim": hidden_dim,
+    "num_classes": num_classes,
+    "batch_size": batch_size,
+    "num_epochs": num_epochs,
+    "learning_rate": learning_rate
+}
 
-        total_test_samples += len(inputs)
-        correct_predictions += (predicted_labels == targets).sum().item()
+with mlflow.start_run():
+    # Log parameters to MLflow
+    for key, value in params.items():
+        mlflow.log_param(key, value)
+    
+    for epoch in range(num_epochs):
+        train_loss, train_accuracy = train_text_model(model, train_loader, optimizer, criterion, device, params['num_classes'])
+        val_loss, val_accuracy = validate_text_model(model, val_loader, criterion, device, params['num_classes'])
+        
+        scheduler.on_epoch_end(epoch, val_loss)
+        early_stopping(val_loss)
 
-        predicted_labels_list.extend(predicted_labels.tolist())
-        targets_list.extend(targets.tolist())
+        print(f'Epoch {epoch + 1}/{num_epochs}, '
+              f'Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}%, '
+              f'Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.2f}%')
+        
+        # Log metrics to MLflow
+        mlflow.log_metric("train_loss", train_loss, epoch)
+        mlflow.log_metric("train_accuracy", train_accuracy, epoch)
+        mlflow.log_metric("val_loss", val_loss, epoch)
+        mlflow.log_metric("val_accuracy", val_accuracy, epoch)
+        
+        # Log model checkpoint to MLflow
+        # mlflow.pytorch.log_model(model, "models")
+        
+        # Adjust learning rate based on epoch loss
+        # Check if validation loss has improved, if not, trigger early stopping
+        if early_stopping.early_stop:
+            print("Early stopping activated. Training halted.")
+            break
 
-    # Calculate evaluation metrics
-    accuracy = correct_predictions / total_test_samples
-    precision = precision_score(targets_list, predicted_labels_list, average='weighted')
-    recall = recall_score(targets_list, predicted_labels_list, average='weighted')
-    f1 = f1_score(targets_list, predicted_labels_list, average='weighted')
+    # Make predictions on the test data
+    accuracy, precision, recall, f1 = evaluate_text_model(model,
+                                                          test_loader,
+                                                          device)
 
-    print(f"Accuracy: {accuracy:.4f}")
-    print(f"Precision: {precision:.4f}")
-    print(f"Recall: {recall:.4f}")
-    print(f"F1-Score: {f1:.4f}")
+    # Log testing metrics
+    mlflow.log_metric("test_accuracy", accuracy)
+    mlflow.log_metric("test_precision", precision)
+    mlflow.log_metric("test_recall", recall)
+    mlflow.log_metric("test_f1_score", f1)
+
