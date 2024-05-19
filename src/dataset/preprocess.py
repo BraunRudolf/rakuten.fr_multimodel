@@ -1,4 +1,5 @@
 import os
+from sklearn.model_selection import train_test_split
 import spacy
 import torch
 from torch.nn.utils.rnn import pad_sequence
@@ -37,6 +38,9 @@ def load_vocab_and_nlp(save_dir, spacy_model="fr_core_news_sm"):
     
     return vocab, nlp
 
+
+
+
 def collate_fn(batch):
     # Separate inputs and targets
     inputs, targets = zip(*batch)
@@ -48,3 +52,23 @@ def collate_fn(batch):
     targets_tensor = torch.tensor(targets, dtype=torch.long)
 
     return padded_inputs, targets_tensor
+
+
+# TODO: build new DataImporter to for sqldb
+def train_val_test_indices(all_indices:list, train_size:float, val_size:float, test_size:float, random_state=42):
+    """Function to create a set of train/val/test indices for Dataset class"""
+    
+    assert train_size + val_size + test_size == 1.0, "Size must bum to 1.0"
+
+    # First split: train and remaining (validation + test)
+    train_indices, remaining_indices = train_test_split(all_indices, train_size=train_size, random_state=random_state)
+
+    # Calculate the proportion of the remaining data
+    remaining_size = val_size + test_size
+    val_proportion = val_size / remaining_size
+
+    # Second split: validation and test from the remaining data
+    val_indices, test_indices = train_test_split(remaining_indices, train_size=val_proportion, random_state=random_state)
+    
+
+    return train_indices, val_indices, test_indices
