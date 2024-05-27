@@ -8,6 +8,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 env/
+rakuten_env/
 build/
 develop-eggs/
 dist/
