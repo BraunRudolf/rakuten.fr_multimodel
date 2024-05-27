@@ -10,14 +10,13 @@ class LearningRateScheduler:
             optimizer, mode='min',
             factor=factor,
             patience=patience,
-            verbose=True,
             cooldown=cooldown
         )
 
     def on_epoch_end(self, epoch, loss, **kwargs):
-        old_lr = self.optimizer.param_groups[0]['lr']  # Get the current learning rate
+        old_lr = self.lr_scheduler.get_last_lr() # Get the current learning rate
         self.lr_scheduler.step(loss)
-        new_lr = self.optimizer.param_groups[0]['lr']  # Get the new learning rate
+        new_lr = self.lr_scheduler.get_last_lr() # Get the new learning rate
         if old_lr != new_lr:
             print(f"Learning rate adjusted from {old_lr} to {new_lr}.") 
             return True
@@ -36,11 +35,7 @@ class EarlyStopping:
     def __call__(self, current_metric, lr_adjusted=False):
         if self.best_metric is None:
             self.best_metric = current_metric
-        elif current_metric < self.best_metric:
-            self.best_metric = current_metric
-            self.counter = 0
-            self.epochs_since_lr_adjust = 0
-        else:
+        elif ( self.best_metric - current_metric ) < -0.01:
             self.counter += 1
             self.epochs_since_lr_adjust += 1
             if self.verbose:
@@ -49,6 +44,12 @@ class EarlyStopping:
                 self.early_stop = True
                 if self.verbose:
                     print("Early stopping activated.")
+        else:
+            self.best_metric = current_metric
+            self.counter = 0
+            self.epochs_since_lr_adjust = 0
         
         if lr_adjusted:
             self.epochs_since_lr_adjust = 0
+            self.counter = 0
+
