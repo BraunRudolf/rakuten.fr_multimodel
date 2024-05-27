@@ -2,7 +2,7 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-
+#TODO: rewrite for sql
 class RakutenTextDataset(Dataset):
     def __init__(self, file_path, text_column, label_column, vocab, spacy_model):
         self.vocab = vocab

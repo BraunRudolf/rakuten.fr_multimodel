@@ -6,7 +6,7 @@ from torch.nn.utils.rnn import pad_sequence
 from collections import Counter
 import json
 
-def build_vocab(data, spacy_model="fr_core_news_sm", save_dir=None):
+def build_vocab(data:list, spacy_model="fr_core_news_sm", save_dir=None):
     counter = Counter()
     nlp = spacy.load(spacy_model)
     for text in data:
