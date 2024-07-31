@@ -1,31 +1,79 @@
+from typing import Callable, Dict, List, Tuple, Union
+
 import pandas as pd
 import torch
+from sqlalchemy import MetaData, Table, create_engine, select
 from torch.utils.data import Dataset
 
-#TODO: rewrite for sql
-class RakutenTextDataset(Dataset):
-    def __init__(self, file_path, text_column, label_column, vocab, spacy_model):
-        self.vocab = vocab
-        self.text_data, self.labels = self.load_data(file_path, text_column, label_column)
-        self.tokenizer =  spacy_model.tokenizer
 
-    def load_data(self, file_path, text_column, label_column):
-        # Load the CSV file
-        df = pd.read_csv(file_path)
-        text_data = df[text_column].tolist()
-        labels = df[label_column].tolist()
-        return text_data, labels
-    
+class RakutenTextDataset(Dataset):
+    def __init__(
+        self,
+        db_url: str,
+        table_name: str,
+        mapping_table_name: str,
+        text_column: str,
+        label_column: str,
+        mapping_column: str,
+        vocab: dict,
+        spacy_model,
+        indices: List[int],
+        preprocessing_pipeline: List[Callable] = [],
+    ):
+
+        self.db_url = db_url
+        self.table_name = table_name
+        self.mapping_table_name = mapping_table_name
+        self.text_column = text_column
+        self.label_column = label_column
+        self.mapping_column = mapping_column
+        self.vocab = vocab
+        self.tokenizer = spacy_model.tokenizer
+        self.preprocessing_pipeline = preprocessing_pipeline or []
+        self.indices = indices
+        self.metadata = MetaData()
+        self.engine = self.connect_to_db()
+        self.conn = self.engine.connect()
+        # self.table = Table(self.table_name, self.metadata, autoload_with=self.engine)
+
+    def connect_to_db(self):
+        engine = create_engine(self.db_url)
+        self.metadata.reflect(engine)
+        self.table = self.metadata.tables[self.table_name]
+        self.mapping_table = self.metadata.tables[self.mapping_table_name]
+
+        return engine
+
+    def preprocess_text(self, text):
+        if self.preprocessing_pipeline is None:
+            return [token.text for token in self.tokenizer(text)]
+
+        for func in self.preprocessing_pipeline:
+            text = func(text)
+
+        return [token.text for token in self.tokenizer(text)]
+
     def text_to_tensor(self, text):
-        tokens = self.tokenizer(text)
-        tensor = [self.vocab[token.text] for token in tokens if token.text in self.vocab]
-        return torch.tensor(tensor, dtype=torch.long) 
+        preprocessed_text = self.preprocess_text(text)
+        tensor = [self.vocab[token] for token in preprocessed_text if token in self.vocab]
+        return torch.tensor(tensor, dtype=torch.long)
 
     def __len__(self):
-        return len(self.text_data)
-    
-    def __getitem__(self, index):
-        text = self.text_data[index]
-        label = self.labels[index]
+        return len(self.indices)
+
+    #  SQl on the fly implementation
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, Union[str, int]]:
+        index = self.indices[idx]
+        with self.engine.connect() as conn:
+            stmt = (
+                select(self.table.c[self.text_column], self.mapping_table.c[self.label_column])
+                .outerjoin(
+                    self.mapping_table,
+                    self.table.c[self.mapping_column] == self.mapping_table.c[self.mapping_column],
+                )
+                .where(self.table.c.id == index)
+            )
+            result = conn.execute(stmt).fetchone()
+        text, label = result
         text_tensor = self.text_to_tensor(text)
         return text_tensor, label
