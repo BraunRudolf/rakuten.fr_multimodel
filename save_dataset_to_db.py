@@ -1,10 +1,12 @@
 import os
-import pandas as pd
-from sqlalchemy import Boolean, Column, Integer, BigInteger, String, Text, ForeignKey
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, declarative_base, relationship
+
 import dotenv
+import pandas as pd
 from sklearn.preprocessing import LabelEncoder
+from sqlalchemy import BigInteger, Boolean, Column, ForeignKey, Integer, String, Text, create_engine
+from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+
+## Script to save dataset to db
 
 dotenv.load_dotenv()
 SQLALCHEMY_DATABASE_URL = os.getenv("DB_SERVER_URI")
@@ -38,7 +40,7 @@ class PrdtypecodeLabelMapping(Base):
 # Create tables
 Base.metadata.create_all(engine)
 
-
+# TODO: environment variable for path
 dataset = pd.read_csv("data/preprocessed/dataset.csv", index_col=0)
 dataset = dataset.fillna("")
 dataset = dataset.drop("label", axis=1)
@@ -52,9 +54,7 @@ label_encoder = LabelEncoder()
 dataset["label"] = label_encoder.fit_transform(dataset["prdtypecode"])
 
 # Save LabelEncoder mapping
-mapping = dict(
-    zip(label_encoder.classes_, label_encoder.transform(label_encoder.classes_))
-)
+mapping = dict(zip(label_encoder.classes_, label_encoder.transform(label_encoder.classes_)))
 mapping_dic = {
     str(class_): int(label)
     for class_, label in zip(
@@ -68,23 +68,18 @@ try:
         mapping = PrdtypecodeLabelMapping(prdtypecode=key, label=value)
         session.add(mapping)
 
-    # Commit the session
     session.commit()
 except Exception as e:
-    # If there's an error, rollback the session
     session.rollback()
     print(f"Error: {e}")
 finally:
-    # Close the session
     session.close()
 
 dataset = dataset.drop("label", axis=1)
 data = dataset.to_dict(orient="records")
 try:
     for row in data:
-        existing_product = (
-            session.query(RakutenProducts).filter_by(id=row["id"]).first()
-        )
+        existing_product = session.query(RakutenProducts).filter_by(id=row["id"]).first()
 
         if existing_product is None:
             product = RakutenProducts(**row)
@@ -95,11 +90,9 @@ try:
     session.commit()
 except Exception as e:
 
-    # If there's an error, rollback the session
     session.rollback()
     print(f"Error: {e}")
 finally:
-    # Close the session
     session.close()
 #
 #
