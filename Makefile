@@ -11,4 +11,4 @@ train_local_mlflow:
 
 .PHONY: train
 train:
-	poetry run python src/main.py
+	poetry run python -m src.main
