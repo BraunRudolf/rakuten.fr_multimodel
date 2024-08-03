@@ -10,8 +10,11 @@
 
 ## enviroment varialbes
 DB_SERVER_URL=sqlite:////database.db
+
 MLFLOW_SERVER_URI=http://127.0.0.1:5000
+
 MLFLOW_EXPERIMENT_NAME
+
 VOCAB_PATH=vocab/
 
 ## install dependencies with poetry
