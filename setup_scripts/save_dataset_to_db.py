@@ -9,7 +9,7 @@ from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 ## Script to save dataset to db
 
 dotenv.load_dotenv()
-SQLALCHEMY_DATABASE_URL = os.getenv("DB_SERVER_URI")
+SQLALCHEMY_DATABASE_URL = os.getenv("DB_SERVER_URL")
 
 engine = create_engine(SQLALCHEMY_DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -40,13 +40,20 @@ class PrdtypecodeLabelMapping(Base):
 # Create tables
 Base.metadata.create_all(engine)
 
-# TODO: environment variable for path
-dataset = pd.read_csv("data/preprocessed/dataset.csv", index_col=0)
+
+# Dataset
+X_train = pd.read_csv("X_train_update.csv", index_col=0)
+y_train = pd.read_csv("Y_train_CVw08PX.csv", index_col=0)
+dataset = pd.concat([X_train, y_train], axis=1)
+
 dataset = dataset.fillna("")
-dataset = dataset.drop("label", axis=1)
 dataset[["productid", "imageid", "prdtypecode"]] = dataset[
     ["productid", "imageid", "prdtypecode"]
 ].astype("string")
+# Create image name column
+# of format image_1263597046_product_3804725264.jpg
+dataset["image_name"] = "image_" + dataset["imageid"] + "_product_" + dataset["productid"]
+
 dataset = dataset.reset_index(names=["id"])
 
 # Encode product type code
@@ -63,6 +70,7 @@ mapping_dic = {
 }
 
 session = SessionLocal()
+# create mapping table
 try:
     for key, value in mapping_dic.items():
         mapping = PrdtypecodeLabelMapping(prdtypecode=key, label=value)
@@ -75,6 +83,7 @@ except Exception as e:
 finally:
     session.close()
 
+# create products table
 dataset = dataset.drop("label", axis=1)
 data = dataset.to_dict(orient="records")
 try:
@@ -94,5 +103,3 @@ except Exception as e:
     print(f"Error: {e}")
 finally:
     session.close()
-#
-#

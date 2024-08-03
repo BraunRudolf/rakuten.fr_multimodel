@@ -27,44 +27,6 @@ from src.model.train_model import evaluate_text_model, train_text_model, validat
 
 dotenv.load_dotenv()
 
-
-# # TODO: Create function that creates splits based on pct
-# data_importer = DataImporter(
-#     target_col=["designation", "description"], label_col="label"
-# )
-# df = data_importer.load_data()
-# X_train, X_val, X_test, y_train, y_val, y_test = data_importer.split_train_test(df)
-# # TODO: create separate preprocessing functions and make usable by dataloader
-# # Preprocess text and images
-# text_preprocessor = TextPreprocessor()
-# image_preprocessor = ImagePreprocessor()
-#
-#
-# X_train = text_preprocessor.preprocess_text_in_df(X_train)
-# X_val = text_preprocessor.preprocess_text_in_df(X_val)
-# X_test = text_preprocessor.preprocess_text_in_df(X_test)
-#
-# # HACK: test as '' strings which load as NaN. check why and resolve
-# X_test = X_test.replace("", " ")
-
-# Write Preprocessed Files
-# train_dataset = pd.concat([X_train, y_train], axis=1)
-# test_dataset = pd.concat([X_test, y_test], axis=1)
-# val_dataset = pd.concat([X_val, y_val], axis=1)
-# train_dataset.to_csv("./data/preprocessed/train_dataset.csv")
-# test_dataset.to_csv("./data/preprocessed/test_dataset.csv")
-# val_dataset.to_csv("./data/preprocessed/val_dataset.csv")
-
-# test = pd.read_csv("./data/preprocessed/test_dataset.csv")
-#
-# train_file = "./data/preprocessed/train_dataset.csv"
-# test_file = "./data/preprocessed/test_dataset.csv"
-# val_file = "./data/preprocessed/val_dataset.csv"
-#
-# assert val_dataset["target"].isna().sum() == 0, "none value"
-#
-
-
 # TRAINING
 # Training parameters
 vocab_size = 500
@@ -114,9 +76,6 @@ else:
 vocab_size = len(vocab)
 
 # Create data loaders for the training and validation sets
-# train_dataset = RakutenTextDataset(train_file, "target", "label", vocab, nlp)
-# valid_dataset = RakutenTextDataset(val_file, "target", "label", vocab, nlp)
-# test_dataset = RakutenTextDataset(test_file, "target", "label", vocab, nlp)
 train_dataset = RakutenTextDataset(
     db_url=DB_URL,
     table_name=TABLE_NAME,
