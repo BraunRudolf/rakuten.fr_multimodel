@@ -5,6 +5,9 @@ from sklearn.metrics import f1_score, precision_score, recall_score
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+# TODO: Add Logging
+# TODO: Fix formatting of procentage values
+
 
 def train_text_model(
     model: nn.Module,

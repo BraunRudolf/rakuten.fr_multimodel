@@ -1,9 +1,10 @@
+import os
 from typing import Callable, Dict, List, Tuple, Union
 
-import pandas as pd
 import torch
-from sqlalchemy import MetaData, Table, create_engine, select
-from torch.utils.data import Dataset
+from sqlalchemy import MetaData, create_engine, select
+from torch.utils.data import DataLoader, Dataset
+from torchvision import io
 
 
 class RakutenTextDataset(Dataset):
@@ -63,6 +64,7 @@ class RakutenTextDataset(Dataset):
 
     #  SQl on the fly implementation
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, Union[str, int]]:
+        # INFO: Prove of concept, alternative load complete text data in memory and access from there
         index = self.indices[idx]
         with self.engine.connect() as conn:
             stmt = (
@@ -77,3 +79,26 @@ class RakutenTextDataset(Dataset):
         text, label = result
         text_tensor = self.text_to_tensor(text)
         return text_tensor, label
+
+
+class RakutenImageDataset(Dataset):
+    def __init__(self, image_folder, image_names, labels=None, transfor=None):
+        self.image_folder = image_folder
+        self.image_names = image_names
+        self.labels = labels
+        self.transfor = transfor
+        self.image_paths = [
+            os.path.join(self.image_folder, image_name) for image_name in self.image_names
+        ]
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        image = io.read_image(self.image_paths[idx])
+        image = image.float()
+        if self.transfor:
+            image = self.transfor(image)
+        if self.labels:
+            return image, self.labels[idx]
+        return image

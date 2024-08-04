@@ -3,6 +3,7 @@ import os
 from collections import Counter
 from typing import Optional
 
+import pandas as pd
 import spacy
 import torch
 from sklearn.model_selection import train_test_split
@@ -126,3 +127,35 @@ def retrieve_vocab_dataset(
 
         result = conn.execute(query).fetchall()
         return [t[0] for t in result]
+
+
+def retrieve_image_infos(
+    db_url: str,
+    table_name: str,
+    id_col: str,
+    image_col: str,
+    mapping_column: str,
+    mapping_table_name: str,
+    label_col: str,
+    indices: list,
+) -> pd.DataFrame:
+    engine = create_engine(db_url)
+
+    with engine.connect() as conn:
+        metadata = MetaData()
+        metadata.reflect(bind=engine)
+        tables = metadata.tables[table_name]
+        mapping_table = metadata.tables[mapping_table_name]
+
+        query = (
+            select(tables.c[image_col], mapping_table.c[label_col])
+            .outerjoin(
+                mapping_table,
+                tables.c[mapping_column] == mapping_table.c[mapping_column],
+            )
+            .filter(tables.c[id_col].in_(indices))
+            .order_by(tables.c[id_col].desc())
+        )
+
+        result = conn.execute(query).fetchall()
+        return pd.DataFrame(result, columns=["image_name", "label"])
