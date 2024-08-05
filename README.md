@@ -7,6 +7,7 @@
     - X_train_update.csv
     - y_train_CVw08PX.csv
     - images.zip
+# Add sample data
 
 ## enviroment varialbes
 DB_SERVER_URL=sqlite:///database.db
