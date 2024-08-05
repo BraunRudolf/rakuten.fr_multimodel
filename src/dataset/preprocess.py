@@ -63,7 +63,7 @@ def retrieve_indices(
 ) -> list:
     """
     params:
-        limit: number of values to be retrives (newest first)
+        limit: number of values to be retrieved (newest first)
     returns number of ids from database
 
     """
@@ -129,13 +129,13 @@ def retrieve_vocab_dataset(
         return [t[0] for t in result]
 
 
-def retrieve_image_infos(
+def retrieve_image_info(
     db_url: str,
     table_name: str,
+    mapping_table_name: str,
     id_col: str,
     image_col: str,
     mapping_column: str,
-    mapping_table_name: str,
     label_col: str,
     indices: list,
 ) -> pd.DataFrame:
@@ -158,4 +158,5 @@ def retrieve_image_infos(
         )
 
         result = conn.execute(query).fetchall()
+        # WARNING: HARDCODED Values
         return pd.DataFrame(result, columns=["image_name", "label"])

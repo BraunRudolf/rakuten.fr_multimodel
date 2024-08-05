@@ -82,11 +82,11 @@ class RakutenTextDataset(Dataset):
 
 
 class RakutenImageDataset(Dataset):
-    def __init__(self, image_folder, image_names, labels=None, transfor=None):
+    def __init__(self, image_folder, image_names, labels=None, transform=None):
         self.image_folder = image_folder
         self.image_names = image_names
         self.labels = labels
-        self.transfor = transfor
+        self.transform = transform
         self.image_paths = [
             os.path.join(self.image_folder, image_name) for image_name in self.image_names
         ]
@@ -97,8 +97,8 @@ class RakutenImageDataset(Dataset):
     def __getitem__(self, idx):
         image = io.read_image(self.image_paths[idx])
         image = image.float()
-        if self.transfor:
-            image = self.transfor(image)
+        if self.transform:
+            image = self.transform(image)
         if self.labels:
             return image, self.labels[idx]
         return image
