@@ -12,20 +12,16 @@ from torchvision import transforms
 
 from src.callbacks.callbacks import EarlyStopping, LearningRateScheduler
 from src.dataset.data_loader import create_image_dataloaders, create_text_dataloaders
-from src.dataset.dataset import RakutenImageDataset, RakutenTextDataset
 from src.dataset.preprocess import (
     build_vocab,
-    collate_fn,
     load_vocab_and_nlp,
     retrieve_indices,
     retrieve_vocab_dataset,
     train_val_test_indices,
 )
-
-# from src.features.build_features import DataImporter, ImagePreprocessor, TextPreprocessor
 from src.model.image_classifier import ImageClassifier
 from src.model.text_classifier import TextClassifier
-from src.model.train_model import evaluate_text_model, train_text_model, validate_text_model
+from src.model.train_model import train_eval_classification_loop
 
 dotenv.load_dotenv()
 
@@ -102,12 +98,12 @@ train_text_loader, val_text_loader, test_text_loader = create_text_dataloaders(
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Create the model
-model = TextClassifier(vocab_size, embedding_dim, hidden_dim, num_classes).to(device)
+text_model = TextClassifier(vocab_size, embedding_dim, hidden_dim, num_classes).to(device)
 
-optimizer = optim.Adam(model.parameters(), lr=0.001)
-criterion = nn.CrossEntropyLoss()
+text_optimizer = optim.Adam(text_model.parameters(), lr=0.001)
+text_criterion = nn.CrossEntropyLoss()
 # Define Callbacks
-scheduler = LearningRateScheduler(optimizer)
+text_scheduler = LearningRateScheduler(text_optimizer)
 early_stopping = EarlyStopping(verbose=True)
 
 params = {
@@ -124,47 +120,20 @@ with mlflow.start_run():
     # Log parameters to MLflow
     for key, value in params.items():
         mlflow.log_param(key, value)
-
-    for epoch in range(num_epochs):
-        train_loss, train_accuracy = train_text_model(
-            model, train_text_loader, optimizer, criterion, device, params["num_classes"]
-        )
-        val_loss, val_accuracy = validate_text_model(
-            model, val_text_loader, criterion, device, params["num_classes"]
-        )
-
-        lr_adjusted = scheduler.on_epoch_end(epoch, val_loss)
-        early_stopping(val_loss, lr_adjusted=lr_adjusted)
-
-        print(
-            f"Epoch {epoch + 1}/{num_epochs}, "
-            f"Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}%, "
-            f"Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.2f}%"
-        )
-
-        # Log metrics to MLflow
-        mlflow.log_metric("train_loss", train_loss, epoch)
-        mlflow.log_metric("train_accuracy", train_accuracy, epoch)
-        mlflow.log_metric("val_loss", val_loss, epoch)
-        mlflow.log_metric("val_accuracy", val_accuracy, epoch)
-
-        # Log model checkpoint to MLflow
-        # mlflow.pytorch.log_model(model, "models")
-
-        # Adjust learning rate based on epoch loss
-        # Check if validation loss has improved, if not, trigger early stopping
-        if early_stopping.early_stop:
-            print("Early stopping activated. Training halted.")
-            break
-
-    # Make predictions on the test data
-    accuracy, precision, recall, f1 = evaluate_text_model(model, test_text_loader, device)
-
-    # Log testing metrics
-    mlflow.log_metric("test_accuracy", accuracy)
-    mlflow.log_metric("test_precision", precision)
-    mlflow.log_metric("test_recall", recall)
-    mlflow.log_metric("test_f1_score", f1)
+    train_eval_classification_loop(
+        model=text_model,
+        train_loader=train_text_loader,
+        val_loader=val_text_loader,
+        test_loader=test_text_loader,
+        optimizer=text_optimizer,
+        criterion=text_criterion,
+        scheduler=text_scheduler,
+        early_stopping=early_stopping,
+        num_epochs=num_epochs,
+        device=device,
+        params=params,
+        log_to_mlflow=True,
+    )
 
 ### IMAGE CLASSIFICATION ###
 transform = None
@@ -186,62 +155,35 @@ train_image_loader, val_image_loader, test_image_loader = create_image_dataloade
     image_folder=IMAGE_FOLDER,
     transform=transform,
 )
-params = {
+image_params = {
     "num_classes": num_classes,
     "batch_size": batch_size,
     "num_epochs": num_epochs,
     "learning_rate": learning_rate,
 }
 # Create the model
-model = ImageClassifier().to(device)
+image_model = ImageClassifier().to(device)
 
-optimizer = optim.Adam(model.parameters(), lr=0.001)
-criterion = nn.CrossEntropyLoss()
+image_optimizer = optim.Adam(image_model.parameters(), lr=0.001)
+image_criterion = nn.CrossEntropyLoss()
 # Define Callback
-scheduler = LearningRateScheduler(optimizer)
+image_scheduler = LearningRateScheduler(image_optimizer)
 early_stopping = EarlyStopping(verbose=True)
 with mlflow.start_run():
     # Log parameters to MLflow
     for key, value in params.items():
         mlflow.log_param(key, value)
-
-        for epoch in range(num_epochs):
-            train_loss, train_accuracy = train_text_model(
-                model, train_image_loader, optimizer, criterion, device, num_classes
-            )
-            val_loss, val_accuracy = validate_text_model(
-                model, val_image_loader, criterion, device, num_classes
-            )
-
-            lr_adjusted = scheduler.on_epoch_end(epoch, val_loss)
-            early_stopping(val_loss, lr_adjusted=lr_adjusted)
-
-            print(
-                f"Epoch {epoch + 1}/{num_epochs}, "
-                f"Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}%, "
-                f"Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.2f}%"
-            )
-
-            # Log metrics to MLflow
-            mlflow.log_metric("train_loss", train_loss, epoch)
-            mlflow.log_metric("train_accuracy", train_accuracy, epoch)
-            mlflow.log_metric("val_loss", val_loss, epoch)
-            mlflow.log_metric("val_accuracy", val_accuracy, epoch)
-
-            # Log model checkpoint to MLflow
-            # mlflow.pytorch.log_model(model, "models")
-
-            # Adjust learning rate based on epoch loss
-            # Check if validation loss has improved, if not, trigger early stopping
-            if early_stopping.early_stop:
-                print("Early stopping activated. Training halted.")
-                break
-
-        # Make predictions on the test data
-        accuracy, precision, recall, f1 = evaluate_text_model(model, test_loader, device)
-
-        # Log testing metrics
-        mlflow.log_metric("test_accuracy", accuracy)
-        mlflow.log_metric("test_precision", precision)
-        mlflow.log_metric("test_recall", recall)
-        mlflow.log_metric("test_f1_score", f1)
+    accuracy, precision, recall, f1 = train_eval_classification_loop(
+        model=image_model,
+        train_loader=train_image_loader,
+        val_loader=val_image_loader,
+        test_loader=test_image_loader,
+        optimizer=image_optimizer,
+        criterion=image_criterion,
+        scheduler=image_scheduler,
+        early_stopping=early_stopping,
+        num_epochs=num_epochs,
+        device=device,
+        params=params,
+        log_to_mlflow=True,
+    )
