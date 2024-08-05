@@ -11,12 +11,12 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 
 from src.callbacks.callbacks import EarlyStopping, LearningRateScheduler
+from src.dataset.data_loader import create_image_dataloaders, create_text_dataloaders
 from src.dataset.dataset import RakutenImageDataset, RakutenTextDataset
 from src.dataset.preprocess import (
     build_vocab,
     collate_fn,
     load_vocab_and_nlp,
-    retrieve_image_infos,
     retrieve_indices,
     retrieve_vocab_dataset,
     train_val_test_indices,
@@ -58,6 +58,7 @@ MAPPING_TABLE_NAME = os.getenv("MAPPING_TABLE_NAME")
 TEXT_COLUMN = os.getenv("TEXT_COLUMN")
 LABLE_COLUMN = os.getenv("LABLE_COLUMN")
 MAPPING_COLUMN = os.getenv("MAPPING_COLUMN")
+IMAGE_FOLDER = os.getenv("IMAGE_FOLDER")
 
 indices = retrieve_indices(DB_URL, TABLE_NAME, ID_COLUMN)  # type: ignore
 train_indices, val_indices, test_indices = train_val_test_indices(indices, 0.8, 0.1, 0.1)
@@ -81,67 +82,22 @@ else:
 vocab_size = len(vocab)
 
 # Create data loaders for the training and validation sets
-train_dataset = RakutenTextDataset(
-    db_url=DB_URL,  # type: ignore
-    table_name=TABLE_NAME,  # type: ignore
-    mapping_table_name=MAPPING_TABLE_NAME,  # type: ignore
-    text_column=TEXT_COLUMN,  # type: ignore
-    label_column=LABLE_COLUMN,  # type: ignore
-    mapping_column=MAPPING_COLUMN,  # type: ignore
+train_text_loader, val_text_loader, test_text_loader = create_text_dataloaders(
+    db_url=DB_URL,
+    table_name=TABLE_NAME,
+    mapping_table_name=MAPPING_TABLE_NAME,
+    text_column=TEXT_COLUMN,
+    label_column=LABLE_COLUMN,
+    mapping_column=MAPPING_COLUMN,
     vocab=vocab,
     spacy_model=nlp,
-    indices=train_indices,
-)
-
-valid_dataset = RakutenTextDataset(
-    db_url=DB_URL,  # type: ignore
-    table_name=TABLE_NAME,  # type: ignore
-    mapping_table_name=MAPPING_TABLE_NAME,  # type: ignore
-    text_column=TEXT_COLUMN,  # type: ignore
-    label_column=LABLE_COLUMN,  # type: ignore
-    mapping_column=MAPPING_COLUMN,  # type: ignore
-    vocab=vocab,
-    spacy_model=nlp,
-    indices=val_indices,
-)
-
-test_dataset = RakutenTextDataset(
-    db_url=DB_URL,  # type: ignore
-    table_name=TABLE_NAME,  # type: ignore
-    mapping_table_name=MAPPING_TABLE_NAME,  # type: ignore
-    text_column=TEXT_COLUMN,  # type: ignore
-    label_column=LABLE_COLUMN,  # type: ignore
-    mapping_column=MAPPING_COLUMN,  # type: ignore
-    vocab=vocab,
-    spacy_model=nlp,
-    indices=test_indices,
-)
-
-train_loader = DataLoader(
-    train_dataset,
+    train_indices=train_indices,
+    val_indices=val_indices,
+    test_indices=test_indices,
     batch_size=batch_size,
-    shuffle=True,
-    collate_fn=collate_fn,
     num_workers=NUM_OF_WORKERS,
     pin_memory=PIN_MEMORY,
 )
-val_loader = DataLoader(
-    valid_dataset,
-    batch_size=batch_size,
-    shuffle=False,
-    collate_fn=collate_fn,
-    num_workers=NUM_OF_WORKERS,
-    pin_memory=PIN_MEMORY,
-)
-test_loader = DataLoader(
-    test_dataset,
-    batch_size=batch_size,
-    shuffle=True,
-    collate_fn=collate_fn,
-    num_workers=NUM_OF_WORKERS,
-    pin_memory=PIN_MEMORY,
-)
-
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -171,10 +127,10 @@ with mlflow.start_run():
 
     for epoch in range(num_epochs):
         train_loss, train_accuracy = train_text_model(
-            model, train_loader, optimizer, criterion, device, params["num_classes"]
+            model, train_text_loader, optimizer, criterion, device, params["num_classes"]
         )
         val_loss, val_accuracy = validate_text_model(
-            model, val_loader, criterion, device, params["num_classes"]
+            model, val_text_loader, criterion, device, params["num_classes"]
         )
 
         lr_adjusted = scheduler.on_epoch_end(epoch, val_loss)
@@ -202,7 +158,7 @@ with mlflow.start_run():
             break
 
     # Make predictions on the test data
-    accuracy, precision, recall, f1 = evaluate_text_model(model, test_loader, device)
+    accuracy, precision, recall, f1 = evaluate_text_model(model, test_text_loader, device)
 
     # Log testing metrics
     mlflow.log_metric("test_accuracy", accuracy)
@@ -212,62 +168,23 @@ with mlflow.start_run():
 
 ### IMAGE CLASSIFICATION ###
 transform = None
-train_image_info = retrieve_image_infos(
-    DB_URL,
-    TABLE_NAME,
-    ID_COLUMN,
-    IMAGE_COLUMN,
-    MAPPING_COLUMN,
-    MAPPING_TABLE_NAME,
-    LABLE_COLUMN,
-    train_indices,
-)
-train_image_dataset = RakutenImageDataset(
-    image_folder=os.path.join(os.getcwd(), "images"),
-    image_names=train_image_info.image_name.to_list(),
-    labels=train_image_info.label.to_list(),
+
+train_image_loader, val_image_loader, test_image_loader = create_image_dataloaders(
+    db_url=DB_URL,
+    table_name=TABLE_NAME,
+    mapping_table_name=MAPPING_TABLE_NAME,
+    id_column=ID_COLUMN,
+    image_column=IMAGE_COLUMN,
+    label_column=LABLE_COLUMN,
+    mapping_column=MAPPING_COLUMN,
+    train_indices=train_indices,
+    val_indices=val_indices,
+    test_indices=test_indices,
+    batch_size=batch_size,
+    num_workers=NUM_OF_WORKERS,
+    pin_memory=PIN_MEMORY,
+    image_folder=IMAGE_FOLDER,
     transform=transform,
-)
-val_image_info = retrieve_image_infos(
-    DB_URL,
-    TABLE_NAME,
-    ID_COLUMN,
-    IMAGE_COLUMN,
-    MAPPING_COLUMN,
-    MAPPING_TABLE_NAME,
-    LABLE_COLUMN,
-    val_indices,
-)
-val_image_dataset = RakutenImageDataset(
-    image_folder=os.path.join(os.getcwd(), "images"),
-    image_names=val_image_info.image_name.to_list(),
-    labels=val_image_info.label.to_list(),
-    transform=transform,
-)
-test_image_info = retrieve_image_infos(
-    DB_URL,
-    TABLE_NAME,
-    ID_COLUMN,
-    IMAGE_COLUMN,
-    MAPPING_COLUMN,
-    MAPPING_TABLE_NAME,
-    LABLE_COLUMN,
-    test_indices,
-)
-test_image_dataset = RakutenImageDataset(
-    image_folder=os.path.join(os.getcwd(), "images"),
-    image_names=test_image_info.image_name.to_list(),
-    labels=test_image_info.label.to_list(),
-    transform=transform,
-)
-train_image_loader = DataLoader(
-    train_image_dataset, batch_size=batch_size, shuffle=True, num_workers=NUM_OF_WORKERS
-)
-val_image_loader = DataLoader(
-    val_image_dataset, batch_size=batch_size, shuffle=False, num_workers=NUM_OF_WORKERS
-)
-test_image_loader = DataLoader(
-    test_image_dataset, batch_size=batch_size, shuffle=True, num_workers=NUM_OF_WORKERS
 )
 params = {
     "num_classes": num_classes,
