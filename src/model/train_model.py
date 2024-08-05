@@ -1,4 +1,5 @@
 #!/usr/bin/env
+import mlflow
 import torch
 import torch.nn as nn
 from sklearn.metrics import f1_score, precision_score, recall_score
@@ -9,7 +10,7 @@ from tqdm import tqdm
 # TODO: Fix formatting of procentage values
 
 
-def train_text_model(
+def train_classification_model(
     model: nn.Module,
     train_loader: DataLoader,
     optimizer: torch.optim.Optimizer,
@@ -22,13 +23,7 @@ def train_text_model(
     total_loss = 0.0
     total_samples = 0
     correct = 0
-    # num_batches_processed = 0
-    print("Training...")
-
-    # num_of_batches = len(train_loader)
     for inputs, targets in tqdm(train_loader, desc="Training"):
-        # if num_batches_processed >= num_of_batches:
-        #     break
         optimizer.zero_grad()
         inputs = inputs.to(device)
         targets = targets.to(device)
@@ -42,7 +37,6 @@ def train_text_model(
         correct += (predictions == targets.view(-1)).sum().item()
         total_loss += loss.item() * inputs.size(0)
         total_samples += inputs.size(0)
-        # num_batches_processed += 1
     print("Training done")
     avg_loss = total_loss / total_samples
     avg_acc = correct / total_samples
@@ -50,7 +44,7 @@ def train_text_model(
     return avg_loss, avg_acc
 
 
-def validate_text_model(
+def validate_classification_model(
     model: nn.Module,
     val_loader: DataLoader,
     criterion: nn.Module,
@@ -82,7 +76,7 @@ def validate_text_model(
     return avg_val_loss, avg_val_acc
 
 
-def evaluate_text_model(model: nn.Module, test_loader: DataLoader, device: torch.device):
+def evaluate_classification_model(model: nn.Module, test_loader: DataLoader, device: torch.device):
 
     model.eval()
     total_test_samples = 0
@@ -109,5 +103,55 @@ def evaluate_text_model(model: nn.Module, test_loader: DataLoader, device: torch
     precision = precision_score(targets_list, predicted_labels_list, average="weighted")
     recall = recall_score(targets_list, predicted_labels_list, average="weighted")
     f1 = f1_score(targets_list, predicted_labels_list, average="weighted")
+
+    return accuracy, precision, recall, f1
+
+
+def train_eval_classification_loop(
+    model,
+    train_loader,
+    val_loader,
+    test_loader,
+    optimizer,
+    criterion,
+    scheduler,
+    early_stopping,
+    num_epochs,
+    device,
+    params,
+    log_to_mlflow,
+):
+    for epoch in range(num_epochs):
+        train_loss, train_accuracy = train_classification_model(
+            model, train_loader, optimizer, criterion, device, params["num_classes"]
+        )
+        val_loss, val_accuracy = validate_classification_model(
+            model, val_loader, criterion, device, params["num_classes"]
+        )
+
+        lr_adjusted = scheduler.on_epoch_end(epoch, val_loss)
+        early_stopping(val_loss, lr_adjusted=lr_adjusted)
+
+        print(
+            f"Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}%, Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.2f}%"
+        )
+
+        if log_to_mlflow:
+            mlflow.log_metric("train_loss", train_loss, epoch)
+            mlflow.log_metric("train_accuracy", train_accuracy, epoch)
+            mlflow.log_metric("val_loss", val_loss, epoch)
+            mlflow.log_metric("val_accuracy", val_accuracy, epoch)
+
+        if early_stopping.early_stop:
+            print("Early stopping activated. Training halted.")
+            break
+
+    accuracy, precision, recall, f1 = evaluate_classification_model(model, test_loader, device)
+
+    if log_to_mlflow:
+        mlflow.log_metric("test_accuracy", accuracy)
+        mlflow.log_metric("test_precision", precision)
+        mlflow.log_metric("test_recall", recall)
+        mlflow.log_metric("test_f1_score", f1)
 
     return accuracy, precision, recall, f1
