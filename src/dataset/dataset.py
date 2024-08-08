@@ -102,3 +102,39 @@ class RakutenImageDataset(Dataset):
         if self.labels:
             return image, self.labels[idx]
         return image
+
+
+class RakutenFusionDataset(Dataset):
+    def __init__(self, text_dataset, image_dataset):
+        self.text_dataset = text_dataset
+        self.image_dataset = image_dataset
+
+    def __len__(self):
+        return len(self.text_dataset)
+
+    def __getitem__(self, idx):
+
+        text, label_text = self.text_dataset[idx]
+        image, label_image = self.image_dataset[idx]
+
+        if label_text != label_image:
+            raise Exception()
+        return text, image, label_text
+
+        # try:
+        #     text, label_text = self.text_dataset[idx]
+        #     image, label_image = self.image_dataset[idx]
+        #     flattened_image = image.flatten()
+        #     combined_data = torch.cat([text, flattened_image], dim=0)
+        #     if label_text != label_image:
+        #         raise Exception()
+        #     return combined_data, label_text
+        # except:
+        #     text, label_text = self.text_dataset[idx]
+        #     image, label_image = self.image_dataset[idx]
+        #     print("text", text.size())
+        #     print("image", image.size())
+        #     flattened_image = image.flatten()
+        #     print("falltend", flattened_image.size())
+        #     combined_data = torch.cat([text, flattened_image], dim=0)
+        #     print("combined", combined_data.size())

@@ -28,8 +28,11 @@ from src.dataset.preprocess import (
 )
 from src.model.fusion_model import FusionModel
 from src.model.image_classifier import ImageClassifier
-from src.model.text_classifier import TextClassifier
-from src.model.train_model import train_eval_classification_loop
+from src.model.text_classifier import HeadlessTextClassifier, TextClassifier
+from src.model.train_model import (
+    train_eval_classification_loop,
+    train_eval_fusion_classification_loop,
+)
 
 dotenv.load_dotenv()
 
@@ -40,7 +43,7 @@ embedding_dim = 250
 hidden_dim = 128
 num_classes = 27
 batch_size = 32
-num_epochs = 2
+num_epochs = 20
 learning_rate = 0.001
 
 MLFLOW_SERVER_URI = os.getenv("MLFLOW_SERVER_URI")
@@ -132,24 +135,24 @@ params = {
     "learning_rate": learning_rate,
 }
 
-with mlflow.start_run():
-    # Log parameters to MLflow
-    for key, value in params.items():
-        mlflow.log_param(key, value)
-    train_eval_classification_loop(
-        model=text_model,
-        train_loader=train_text_loader,
-        val_loader=val_text_loader,
-        test_loader=test_text_loader,
-        optimizer=text_optimizer,
-        criterion=text_criterion,
-        scheduler=text_scheduler,
-        early_stopping=early_stopping,
-        num_epochs=num_epochs,
-        device=device,
-        params=params,
-        log_to_mlflow=True,
-    )
+# with mlflow.start_run():
+#     # Log parameters to MLflow
+#     for key, value in params.items():
+#         mlflow.log_param(key, value)
+#     train_eval_classification_loop(
+#         model=text_model,
+#         train_loader=train_text_loader,
+#         val_loader=val_text_loader,
+#         test_loader=test_text_loader,
+#         optimizer=text_optimizer,
+#         criterion=text_criterion,
+#         scheduler=text_scheduler,
+#         early_stopping=early_stopping,
+#         num_epochs=num_epochs,
+#         device=device,
+#         params=params,
+#         log_to_mlflow=True,
+#     )
 
 ### IMAGE CLASSIFICATION ###
 transform = transforms.Compose([transforms.Resize((224, 224))])
@@ -191,34 +194,37 @@ image_criterion = nn.CrossEntropyLoss()
 # Define Callback
 image_scheduler = LearningRateScheduler(image_optimizer)
 early_stopping = EarlyStopping(verbose=True)
-with mlflow.start_run():
-    # Log parameters to MLflow
-    for key, value in params.items():
-        mlflow.log_param(key, value)
-    accuracy, precision, recall, f1 = train_eval_classification_loop(
-        model=image_model,
-        train_loader=train_image_loader,
-        val_loader=val_image_loader,
-        test_loader=test_image_loader,
-        optimizer=image_optimizer,
-        criterion=image_criterion,
-        scheduler=image_scheduler,
-        early_stopping=early_stopping,
-        num_epochs=num_epochs,
-        device=device,
-        params=params,
-        log_to_mlflow=True,
-    )
+# with mlflow.start_run():
+#     # Log parameters to MLflow
+#     for key, value in params.items():
+#         mlflow.log_param(key, value)
+#     accuracy, precision, recall, f1 = train_eval_classification_loop(
+#         model=image_model,
+#         train_loader=train_image_loader,
+#         val_loader=val_image_loader,
+#         test_loader=test_image_loader,
+#         optimizer=image_optimizer,
+#         criterion=image_criterion,
+#         scheduler=image_scheduler,
+#         early_stopping=early_stopping,
+#         num_epochs=num_epochs,
+#         device=device,
+#         params=params,
+#         log_to_mlflow=True,
+#     )
 
+torch.save(text_model.state_dict(), "text_model.pth")
+torch.save(image_model.state_dict(), "image_model.pth")
 
 # Fusion Model
-# text_model = torch.load("text_model.pth")
-# image_model = torch.load("image_model.pth")
+text_model.load_state_dict(torch.load("text_model.pth"))
+image_model.load_state_dict(torch.load("image_model.pth"))
 
-cut_text_model = nn.Sequential(*list(text_model.children())[:-1])
+headless_text_model = HeadlessTextClassifier(vocab_size, embedding_dim, hidden_dim, num_classes)
+headless_text_model.load_state_dict(text_model.state_dict(), strict=False)
 cut_image_model = nn.Sequential(*list(image_model.children())[:-3])
-print(cut_text_model)
-print(cut_image_model)
+# headless_text_model.eval()
+# cut_image_model.eval()
 
 train_fusion_dataset, val_fusion_dataset, test_fusion_dataset = create_fusion_datasets(
     train_text_dataset=train_text_dataset,
@@ -248,7 +254,7 @@ image_params = {
 
 
 # # Create the model
-fusion_model = FusionModel(cut_text_model, cut_image_model, num_classes).to(device)
+fusion_model = FusionModel(headless_text_model, cut_image_model, num_classes).to(device)
 
 
 fusion_optimizer = optim.Adam(image_model.parameters(), lr=0.001)
@@ -262,28 +268,22 @@ fusion_model.train()
 total_loss = 0.0
 total_samples = 0
 correct = 0
-for text, image, targets in train_fusion_loader:
-    fusion_optimizer.zero_grad()
-    text = text.to(device)
-    image = image.to(device)
-    targets = targets.to(device)
-    outputs = fusion_model(text, image)
 
-# with mlflow.start_run():
-#     # Log parameters to MLflow
-#     for key, value in params.items():
-#         mlflow.log_param(key, value)
-#     accuracy, precision, recall, f1 = train_eval_classification_loop(
-#         model=fusion_model,
-#         train_loader=train_fusion_loader,
-#         val_loader=val_fusion_loader,
-#         test_loader=test_fusion_loader,
-#         optimizer=fusion_optimizer,
-#         criterion=fusion_criterion,
-#         scheduler=fusion_scheduler,
-#         early_stopping=early_stopping,
-#         num_epochs=15,
-#         device=device,
-#         params=params,
-#         log_to_mlflow=True,
-#     )
+with mlflow.start_run():
+    # Log parameters to MLflow
+    for key, value in params.items():
+        mlflow.log_param(key, value)
+    accuracy, precision, recall, f1 = train_eval_fusion_classification_loop(
+        model=fusion_model,
+        train_loader=train_fusion_loader,
+        val_loader=val_fusion_loader,
+        test_loader=test_fusion_loader,
+        optimizer=fusion_optimizer,
+        criterion=fusion_criterion,
+        scheduler=fusion_scheduler,
+        early_stopping=early_stopping,
+        num_epochs=15,
+        device=device,
+        params=params,
+        log_to_mlflow=True,
+    )

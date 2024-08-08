@@ -46,7 +46,7 @@ def load_vocab_and_nlp(save_dir, spacy_model="fr_core_news_sm"):
     return vocab, nlp
 
 
-def collate_fn(batch):
+def text_collate_fn(batch):
     # Separate inputs and targets
     inputs, targets = zip(*batch)
 
@@ -56,6 +56,21 @@ def collate_fn(batch):
     # Convert targets to tensor
     targets_tensor = torch.tensor(targets, dtype=torch.long)
     return padded_inputs, targets_tensor
+
+
+def fusion_collate_fn(batch):
+    # Separate inputs and targets
+    texts, images, targets = zip(*batch)
+
+    # Pad sequences to the maximum length in the batch
+    padded_texts = pad_sequence(texts, batch_first=True, padding_value=0)
+
+    images = torch.stack(images)
+
+    # Convert targets to tensor
+    targets = torch.tensor(targets)
+
+    return (padded_texts, images), targets
 
 
 def retrieve_indices(
@@ -148,7 +163,7 @@ def retrieve_image_info(
         mapping_table = metadata.tables[mapping_table_name]
 
         query = (
-            select(tables.c[image_col], mapping_table.c[label_col])
+            select(tables.c[id_col], tables.c[image_col], mapping_table.c[label_col])
             .outerjoin(
                 mapping_table,
                 tables.c[mapping_column] == mapping_table.c[mapping_column],
@@ -159,4 +174,4 @@ def retrieve_image_info(
 
         result = conn.execute(query).fetchall()
         # WARNING: HARDCODED Values
-        return pd.DataFrame(result, columns=["image_name", "label"])
+        return pd.DataFrame(result, columns=["id", "image_name", "label"])
