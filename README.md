@@ -1,5 +1,19 @@
 # rakuten.fr_multimodel
-## requirements 
+## Project Overview
+This project aims to develop a robust multimodal classification model for predicting product type codes based on product titles, images, and potentially additional descriptions. The goal is to improve product categorization accuracy and efficiency for Rakuten France. As a proof of concept, text data stored in a database to facilitate scalability and efficient data management. MLflow is integrated to track experiments, monitor model performance, and facilitate reproducibility.
+
+### Problem
+Accurate and scalable product type classification is crucial for e-commerce platforms like Rakuten. Manual and rule-based methods are often insufficient due to the vast and diverse product catalog.
+
+### Solution
+A multimodal fusion model is implemented to leverage both textual and visual information for enhanced classification performance. MLflow is integrated for experiment tracking, model management, and reproducibility.
+
+## Dataset
+### Description
+The dataset consists of product listings with corresponding product type codes from Rakuten France. Each data point includes product title, image, and optional description.
+Preprocessing: Data preprocessing includes image resizing, text cleaning, and tokenization.
+
+## requirements
 - python 3.12.0
 - poetry 1.8.2
 - Datafiles: https://challengedata.ens.fr/participants/challenges/35/
