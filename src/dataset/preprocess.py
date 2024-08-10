@@ -13,13 +13,20 @@ from torch.nn.utils.rnn import pad_sequence
 
 # NOTE: Is this realy preprocessing?
 def build_vocab(data: list, spacy_model="fr_core_news_sm", save_dir=None):
+    # TODO: add progress bar
     counter = Counter()
     nlp = spacy.load(spacy_model)
+
     for text in data:
         doc = nlp(text)
         tokens = [token.text for token in doc]
         counter.update(tokens)
+
     vocab = {token: index for index, (token, _) in enumerate(counter.most_common())}
+
+    if "<unk>" not in vocab:
+        vocab["<unk>"] = len(vocab)
+
     if save_dir:
         # Save the vocabulary dictionary as a JSON file
         vocab_path = os.path.join(save_dir, "vocab.json")

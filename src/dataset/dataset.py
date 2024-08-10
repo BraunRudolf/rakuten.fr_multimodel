@@ -29,7 +29,8 @@ class RakutenTextDataset(Dataset):
         self.label_column = label_column
         self.mapping_column = mapping_column
         self.vocab = vocab
-        self.tokenizer = spacy_model.tokenizer
+        self.nlp = spacy_model
+        # self.tokenizer = spacy_model.tokenizer
         self.preprocessing_pipeline = preprocessing_pipeline or []
         self.indices = indices
         self.metadata = MetaData()
@@ -47,15 +48,23 @@ class RakutenTextDataset(Dataset):
 
     def preprocess_text(self, text):
         if self.preprocessing_pipeline is None:
+            return self.nlp(text)
             return [token.text for token in self.tokenizer(text)]
 
         for func in self.preprocessing_pipeline:
             text = func(text)
+        return self.nlp(text)
+        # return [token.text for token in self.tokenizer(text)]
 
-        return [token.text for token in self.tokenizer(text)]
+    def text_to_tensor(self, doc):
+        # preprocessed_text = self.preprocess_text(doc)
+        tokens = [token.text for token in doc]
+        tensor = [self.vocab.get(token, self.vocab.get("<unk>")) for token in tokens]
 
-    def text_to_tensor(self, text):
-        preprocessed_text = self.preprocess_text(text)
+        # Check for None values in tensor
+        if any(val is None for val in tensor):
+            raise ValueError("Vocabulary lookup returned None for some tokens.")
+        return torch.tensor(tensor, dtype=torch.long)
         tensor = [self.vocab[token] for token in preprocessed_text if token in self.vocab]
         return torch.tensor(tensor, dtype=torch.long)
 
@@ -77,7 +86,8 @@ class RakutenTextDataset(Dataset):
             )
             result = conn.execute(stmt).fetchone()
         text, label = result
-        text_tensor = self.text_to_tensor(text)
+        doc = self.preprocess_text(text)
+        text_tensor = self.text_to_tensor(doc)
         return text_tensor, label
 
 
@@ -120,21 +130,3 @@ class RakutenFusionDataset(Dataset):
         if label_text != label_image:
             raise Exception()
         return text, image, label_text
-
-        # try:
-        #     text, label_text = self.text_dataset[idx]
-        #     image, label_image = self.image_dataset[idx]
-        #     flattened_image = image.flatten()
-        #     combined_data = torch.cat([text, flattened_image], dim=0)
-        #     if label_text != label_image:
-        #         raise Exception()
-        #     return combined_data, label_text
-        # except:
-        #     text, label_text = self.text_dataset[idx]
-        #     image, label_image = self.image_dataset[idx]
-        #     print("text", text.size())
-        #     print("image", image.size())
-        #     flattened_image = image.flatten()
-        #     print("falltend", flattened_image.size())
-        #     combined_data = torch.cat([text, flattened_image], dim=0)
-        #     print("combined", combined_data.size())

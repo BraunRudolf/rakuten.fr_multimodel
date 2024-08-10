@@ -72,218 +72,231 @@ train_indices, val_indices, test_indices = train_val_test_indices(indices, 0.8, 
 train_indices.sort(reverse=True)
 val_indices.sort(reverse=True)
 test_indices.sort(reverse=True)
+text = True
+image = False
+fusion = False
 
-# TODO: remove from main to seperate script that run periodically with full dataset?
-# create/load vocab
-vocab_path = os.getenv("VOCAB_PATH")
-# HACK: change to more precise check
-if len(os.listdir(vocab_path)) == 0:
-    print(len(os.listdir(vocab_path)))
-    # create new tokenizer + vocab
-    vocab, nlp = build_vocab(
-        retrieve_vocab_dataset(DB_URL, TABLE_NAME, "id", TEXT_COLUMN, train_indices),  # type: ignore
-        save_dir=vocab_path,
+if text:
+    # TODO: remove from main to seperate script that run periodically with full dataset?
+    # add create vocab
+    # add load vocab
+    # add check for vocab
+    vocab_base_path = os.getenv("VOCAB_PATH")
+    if not vocab_base_path:
+        raise EnvironmentError("The environment variable VOCAB_PATH is not set.")
+
+    vocab_path = os.path.join(os.getenv("VOCAB_PATH"), TEXT_COLUMN)  # type: ignore
+
+    if not os.path.exists(vocab_path):
+        # make dir
+        print(f"Vocabulary path '{vocab_path}' does not exist. Creating new tokenizer and vocab.")
+        os.makedirs(os.path.dirname(vocab_path), exist_ok=True)
+        os.makedirs(vocab_path, exist_ok=True)
+
+        vocab, nlp = build_vocab(
+            retrieve_vocab_dataset(DB_URL, TABLE_NAME, "id", TEXT_COLUMN, train_indices),  # type: ignore
+            save_dir=vocab_path,
+        )
+    else:
+        vocab, nlp = load_vocab_and_nlp(vocab_path)
+
+    vocab_size = len(vocab)
+    print(nlp.pipeline)
+
+    train_text_dataset, val_text_dataset, test_text_dataset = create_text_datasets(
+        db_url=DB_URL,
+        table_name=TABLE_NAME,
+        mapping_table_name=MAPPING_TABLE_NAME,
+        text_column=TEXT_COLUMN,
+        label_column=LABLE_COLUMN,
+        mapping_column=MAPPING_COLUMN,
+        vocab=vocab,
+        spacy_model=nlp,
+        train_indices=train_indices,
+        val_indices=val_indices,
+        test_indices=test_indices,
     )
-else:
-    vocab, nlp = load_vocab_and_nlp(vocab_path)
+    train_text_loader, val_text_loader, test_text_loader = create_dataloaders(
+        train_dataset=train_text_dataset,
+        val_dataset=val_text_dataset,
+        test_dataset=test_text_dataset,
+        shuffle=False,
+        batch_size=batch_size,
+        num_workers=NUM_OF_WORKERS,
+        pin_memory=PIN_MEMORY,
+        collate_fn=text_collate_fn,
+    )
 
-vocab_size = len(vocab)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-train_text_dataset, val_text_dataset, test_text_dataset = create_text_datasets(
-    db_url=DB_URL,
-    table_name=TABLE_NAME,
-    mapping_table_name=MAPPING_TABLE_NAME,
-    text_column=TEXT_COLUMN,
-    label_column=LABLE_COLUMN,
-    mapping_column=MAPPING_COLUMN,
-    vocab=vocab,
-    spacy_model=nlp,
-    train_indices=train_indices,
-    val_indices=val_indices,
-    test_indices=test_indices,
-)
-train_text_loader, val_text_loader, test_text_loader = create_dataloaders(
-    train_dataset=train_text_dataset,
-    val_dataset=val_text_dataset,
-    test_dataset=test_text_dataset,
-    shuffle=False,
-    batch_size=batch_size,
-    num_workers=NUM_OF_WORKERS,
-    pin_memory=PIN_MEMORY,
-    collate_fn=text_collate_fn,
-)
+    # Create the model
+    text_model = TextClassifier(vocab_size, embedding_dim, hidden_dim, num_classes).to(device)
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    text_optimizer = optim.Adam(text_model.parameters(), lr=0.001)
+    text_criterion = nn.CrossEntropyLoss()
 
-# Create the model
-text_model = TextClassifier(vocab_size, embedding_dim, hidden_dim, num_classes).to(device)
+    # Define Callbacks
+    text_scheduler = LearningRateScheduler(text_optimizer)
+    early_stopping = EarlyStopping(verbose=True)
 
-text_optimizer = optim.Adam(text_model.parameters(), lr=0.001)
-text_criterion = nn.CrossEntropyLoss()
+    params = {
+        "vocab_size": len(vocab),
+        "embedding_dim": embedding_dim,
+        "hidden_dim": hidden_dim,
+        "num_classes": num_classes,
+        "batch_size": batch_size,
+        "num_epochs": num_epochs,
+        "learning_rate": learning_rate,
+    }
 
-# Define Callbacks
-text_scheduler = LearningRateScheduler(text_optimizer)
-early_stopping = EarlyStopping(verbose=True)
-
-params = {
-    "vocab_size": len(vocab),
-    "embedding_dim": embedding_dim,
-    "hidden_dim": hidden_dim,
-    "num_classes": num_classes,
-    "batch_size": batch_size,
-    "num_epochs": num_epochs,
-    "learning_rate": learning_rate,
-}
-
-# with mlflow.start_run():
-#     # Log parameters to MLflow
-#     for key, value in params.items():
-#         mlflow.log_param(key, value)
-#     train_eval_classification_loop(
-#         model=text_model,
-#         train_loader=train_text_loader,
-#         val_loader=val_text_loader,
-#         test_loader=test_text_loader,
-#         optimizer=text_optimizer,
-#         criterion=text_criterion,
-#         scheduler=text_scheduler,
-#         early_stopping=early_stopping,
-#         num_epochs=num_epochs,
-#         device=device,
-#         params=params,
-#         log_to_mlflow=True,
-#     )
+    with mlflow.start_run():
+        # Log parameters to MLflow
+        for key, value in params.items():
+            mlflow.log_param(key, value)
+        train_eval_classification_loop(
+            model=text_model,
+            train_loader=train_text_loader,
+            val_loader=val_text_loader,
+            test_loader=test_text_loader,
+            optimizer=text_optimizer,
+            criterion=text_criterion,
+            scheduler=text_scheduler,
+            early_stopping=early_stopping,
+            num_epochs=num_epochs,
+            device=device,
+            params=params,
+            log_to_mlflow=True,
+        )
+    torch.save(text_model.state_dict(), "text_model.pth")
 
 ### IMAGE CLASSIFICATION ###
-transform = transforms.Compose([transforms.Resize((224, 224))])
+if image:
+    transform = transforms.Compose([transforms.Resize((224, 224))])
 
-train_image_dataset, val_image_dataset, test_image_dataset = create_image_datasets(
-    db_url=DB_URL,
-    table_name=TABLE_NAME,
-    mapping_table_name=MAPPING_TABLE_NAME,
-    id_column=ID_COLUMN,
-    image_column=IMAGE_COLUMN,
-    label_column=LABLE_COLUMN,
-    mapping_column=MAPPING_COLUMN,
-    train_indices=train_indices,
-    val_indices=val_indices,
-    test_indices=test_indices,
-    image_folder=IMAGE_FOLDER,
-    transform=transform,
-)
-train_image_loader, val_image_loader, test_image_loader = create_dataloaders(
-    train_dataset=train_image_dataset,
-    val_dataset=val_image_dataset,
-    test_dataset=test_image_dataset,
-    shuffle=False,
-    batch_size=batch_size,  # WARNING: HARDCODED
-    num_workers=NUM_OF_WORKERS,
-    pin_memory=PIN_MEMORY,
-)
-image_params = {
-    "num_classes": num_classes,
-    "batch_size": batch_size,
-    "num_epochs": num_epochs,
-    "learning_rate": learning_rate,
-}
-# Create the model
-image_model = ImageClassifier().to(device)
+    train_image_dataset, val_image_dataset, test_image_dataset = create_image_datasets(
+        db_url=DB_URL,
+        table_name=TABLE_NAME,
+        mapping_table_name=MAPPING_TABLE_NAME,
+        id_column=ID_COLUMN,
+        image_column=IMAGE_COLUMN,
+        label_column=LABLE_COLUMN,
+        mapping_column=MAPPING_COLUMN,
+        train_indices=train_indices,
+        val_indices=val_indices,
+        test_indices=test_indices,
+        image_folder=IMAGE_FOLDER,
+        transform=transform,
+    )
+    train_image_loader, val_image_loader, test_image_loader = create_dataloaders(
+        train_dataset=train_image_dataset,
+        val_dataset=val_image_dataset,
+        test_dataset=test_image_dataset,
+        shuffle=False,
+        batch_size=batch_size,  # WARNING: HARDCODED
+        num_workers=NUM_OF_WORKERS,
+        pin_memory=PIN_MEMORY,
+    )
+    image_params = {
+        "num_classes": num_classes,
+        "batch_size": batch_size,
+        "num_epochs": num_epochs,
+        "learning_rate": learning_rate,
+    }
+    # Create the model
+    image_model = ImageClassifier().to(device)
 
-image_optimizer = optim.Adam(image_model.parameters(), lr=0.001)
-image_criterion = nn.CrossEntropyLoss()
-# Define Callback
-image_scheduler = LearningRateScheduler(image_optimizer)
-early_stopping = EarlyStopping(verbose=True)
-# with mlflow.start_run():
-#     # Log parameters to MLflow
-#     for key, value in params.items():
-#         mlflow.log_param(key, value)
-#     accuracy, precision, recall, f1 = train_eval_classification_loop(
-#         model=image_model,
-#         train_loader=train_image_loader,
-#         val_loader=val_image_loader,
-#         test_loader=test_image_loader,
-#         optimizer=image_optimizer,
-#         criterion=image_criterion,
-#         scheduler=image_scheduler,
-#         early_stopping=early_stopping,
-#         num_epochs=num_epochs,
-#         device=device,
-#         params=params,
-#         log_to_mlflow=True,
-#     )
+    image_optimizer = optim.Adam(image_model.parameters(), lr=0.001)
+    image_criterion = nn.CrossEntropyLoss()
+    # Define Callback
+    image_scheduler = LearningRateScheduler(image_optimizer)
+    early_stopping = EarlyStopping(verbose=True)
+    with mlflow.start_run():
+        # Log parameters to MLflow
+        for key, value in params.items():
+            mlflow.log_param(key, value)
+        accuracy, precision, recall, f1 = train_eval_classification_loop(
+            model=image_model,
+            train_loader=train_image_loader,
+            val_loader=val_image_loader,
+            test_loader=test_image_loader,
+            optimizer=image_optimizer,
+            criterion=image_criterion,
+            scheduler=image_scheduler,
+            early_stopping=early_stopping,
+            num_epochs=num_epochs,
+            device=device,
+            params=params,
+            log_to_mlflow=True,
+        )
+    torch.save(image_model.state_dict(), "image_model.pth")
 
-torch.save(text_model.state_dict(), "text_model.pth")
-torch.save(image_model.state_dict(), "image_model.pth")
 
 # Fusion Model
-text_model.load_state_dict(torch.load("text_model.pth"))
-image_model.load_state_dict(torch.load("image_model.pth"))
+if fusion:
+    text_model.load_state_dict(torch.load("text_model.pth"))
+    image_model.load_state_dict(torch.load("image_model.pth"))
 
-headless_text_model = HeadlessTextClassifier(vocab_size, embedding_dim, hidden_dim, num_classes)
-headless_text_model.load_state_dict(text_model.state_dict(), strict=False)
-cut_image_model = nn.Sequential(*list(image_model.children())[:-3])
-# headless_text_model.eval()
-# cut_image_model.eval()
+    headless_text_model = HeadlessTextClassifier(vocab_size, embedding_dim, hidden_dim, num_classes)
+    headless_text_model.load_state_dict(text_model.state_dict(), strict=False)
+    cut_image_model = nn.Sequential(*list(image_model.children())[:-3])
+    # headless_text_model.eval()
+    # cut_image_model.eval()
 
-train_fusion_dataset, val_fusion_dataset, test_fusion_dataset = create_fusion_datasets(
-    train_text_dataset=train_text_dataset,
-    val_text_dataset=val_text_dataset,
-    test_text_dataset=test_text_dataset,
-    train_image_dataset=train_image_dataset,
-    val_image_dataset=val_image_dataset,
-    test_image_dataset=test_image_dataset,
-)
-train_fusion_loader, val_fusion_loader, test_fusion_loader = create_dataloaders(
-    train_fusion_dataset,
-    val_fusion_dataset,
-    test_fusion_dataset,
-    batch_size,
-    NUM_OF_WORKERS,
-    PIN_MEMORY,
-    collate_fn=fusion_collate_fn,
-    shuffle=True,
-)
-
-image_params = {
-    "num_classes": num_classes,
-    "batch_size": batch_size,
-    "num_epochs": num_epochs,
-    "learning_rate": learning_rate,
-}
-
-
-# # Create the model
-fusion_model = FusionModel(headless_text_model, cut_image_model, num_classes).to(device)
-
-
-fusion_optimizer = optim.Adam(image_model.parameters(), lr=0.001)
-fusion_criterion = nn.CrossEntropyLoss()
-# Define Callback
-fusion_scheduler = LearningRateScheduler(fusion_optimizer)
-early_stopping = EarlyStopping(verbose=True)
-
-
-fusion_model.train()
-total_loss = 0.0
-total_samples = 0
-correct = 0
-
-with mlflow.start_run():
-    # Log parameters to MLflow
-    for key, value in params.items():
-        mlflow.log_param(key, value)
-    accuracy, precision, recall, f1 = train_eval_fusion_classification_loop(
-        model=fusion_model,
-        train_loader=train_fusion_loader,
-        val_loader=val_fusion_loader,
-        test_loader=test_fusion_loader,
-        optimizer=fusion_optimizer,
-        criterion=fusion_criterion,
-        scheduler=fusion_scheduler,
-        early_stopping=early_stopping,
-        num_epochs=15,
-        device=device,
-        params=params,
-        log_to_mlflow=True,
+    train_fusion_dataset, val_fusion_dataset, test_fusion_dataset = create_fusion_datasets(
+        train_text_dataset=train_text_dataset,
+        val_text_dataset=val_text_dataset,
+        test_text_dataset=test_text_dataset,
+        train_image_dataset=train_image_dataset,
+        val_image_dataset=val_image_dataset,
+        test_image_dataset=test_image_dataset,
     )
+    train_fusion_loader, val_fusion_loader, test_fusion_loader = create_dataloaders(
+        train_fusion_dataset,
+        val_fusion_dataset,
+        test_fusion_dataset,
+        batch_size,
+        NUM_OF_WORKERS,
+        PIN_MEMORY,
+        collate_fn=fusion_collate_fn,
+        shuffle=True,
+    )
+
+    image_params = {
+        "num_classes": num_classes,
+        "batch_size": batch_size,
+        "num_epochs": num_epochs,
+        "learning_rate": learning_rate,
+    }
+
+    # # Create the model
+    fusion_model = FusionModel(headless_text_model, cut_image_model, num_classes).to(device)
+
+    fusion_optimizer = optim.Adam(image_model.parameters(), lr=0.001)
+    fusion_criterion = nn.CrossEntropyLoss()
+    # Define Callback
+    fusion_scheduler = LearningRateScheduler(fusion_optimizer)
+    early_stopping = EarlyStopping(verbose=True)
+
+    fusion_model.train()
+    total_loss = 0.0
+    total_samples = 0
+    correct = 0
+
+    with mlflow.start_run():
+        # Log parameters to MLflow
+        for key, value in params.items():
+            mlflow.log_param(key, value)
+        accuracy, precision, recall, f1 = train_eval_fusion_classification_loop(
+            model=fusion_model,
+            train_loader=train_fusion_loader,
+            val_loader=val_fusion_loader,
+            test_loader=test_fusion_loader,
+            optimizer=fusion_optimizer,
+            criterion=fusion_criterion,
+            scheduler=fusion_scheduler,
+            early_stopping=early_stopping,
+            num_epochs=15,
+            device=device,
+            params=params,
+            log_to_mlflow=True,
+        )
