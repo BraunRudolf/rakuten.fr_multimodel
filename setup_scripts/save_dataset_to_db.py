@@ -23,6 +23,7 @@ class RakutenProducts(Base):
     id = Column(Integer, primary_key=True, unique=True)
     designation = Column(String)
     description = Column(Text, nullable=True)
+    text = Column(Text)
     productid = Column(String)
     imageid = Column(String)
     prdtypecode = Column(String, ForeignKey("prdtypecode_label_mapping.prdtypecode"))
@@ -47,9 +48,13 @@ y_train = pd.read_csv("Y_train_CVw08PX.csv", index_col=0)
 dataset = pd.concat([X_train, y_train], axis=1)
 
 dataset = dataset.fillna("")
+# Create text column
+dataset["text"] = dataset["designation"] + " " + dataset["description"]
+
 dataset[["productid", "imageid", "prdtypecode"]] = dataset[
     ["productid", "imageid", "prdtypecode"]
 ].astype("string")
+
 # Create image name column
 # of format image_1263597046_product_3804725264.jpg
 dataset["image_name"] = "image_" + dataset["imageid"] + "_product_" + dataset["productid"]
