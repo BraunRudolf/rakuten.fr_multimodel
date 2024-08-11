@@ -3,11 +3,9 @@ import os
 
 import dotenv
 import mlflow
-import pandas as pd
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.utils.data import DataLoader
 from torchvision import transforms
 
 from src.callbacks.callbacks import EarlyStopping, LearningRateScheduler
@@ -21,9 +19,13 @@ from src.dataset.preprocess import (
     build_vocab,
     fusion_collate_fn,
     load_vocab_and_nlp,
+    remove_html,
+    remove_punctuation,
+    remove_white_space,
     retrieve_indices,
     retrieve_vocab_dataset,
     text_collate_fn,
+    to_lower,
     train_val_test_indices,
 )
 from src.model.fusion_model import FusionModel
@@ -54,8 +56,8 @@ mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
 
 # Dataloader settings
 # 8 workers enough, bottleneck on RTX 4090
-NUM_OF_WORKERS = 16
-PIN_MEMORY = False
+NUM_OF_WORKERS = int(os.getenv("NUM_OF_WORKERS"))  # type: ignore # NUM_OF_WORKERS
+PIN_MEMORY = os.getenv("PIN_MEMORY")  # type: ignore # PIN_MEMORY
 
 DB_URL = os.getenv("DB_SERVER_URL")  # type: ignore # DB_URL
 ID_COLUMN = os.getenv("ID_COLUMN")
@@ -95,13 +97,13 @@ if text:
 
         vocab, nlp = build_vocab(
             retrieve_vocab_dataset(DB_URL, TABLE_NAME, "id", TEXT_COLUMN, train_indices),  # type: ignore
+            preprocessing_pipeline=[to_lower, remove_html, remove_punctuation, remove_white_space],
             save_dir=vocab_path,
         )
     else:
         vocab, nlp = load_vocab_and_nlp(vocab_path)
 
     vocab_size = len(vocab)
-    print(nlp.pipeline)
 
     train_text_dataset, val_text_dataset, test_text_dataset = create_text_datasets(
         db_url=DB_URL,
@@ -115,6 +117,12 @@ if text:
         train_indices=train_indices,
         val_indices=val_indices,
         test_indices=test_indices,
+        preprocessing_pipeline=[
+            to_lower,
+            remove_html,
+            remove_punctuation,
+            remove_white_space,
+        ],
     )
     train_text_loader, val_text_loader, test_text_loader = create_dataloaders(
         train_dataset=train_text_dataset,

@@ -16,6 +16,7 @@ def create_text_datasets(
     train_indices,
     val_indices,
     test_indices,
+    preprocessing_pipeline=[],
 ):
     train_dataset = RakutenTextDataset(
         db_url,
@@ -27,6 +28,7 @@ def create_text_datasets(
         vocab,
         spacy_model,
         train_indices,
+        preprocessing_pipeline,
     )
     val_dataset = RakutenTextDataset(
         db_url,
@@ -38,6 +40,7 @@ def create_text_datasets(
         vocab,
         spacy_model,
         val_indices,
+        preprocessing_pipeline,
     )
     test_dataset = RakutenTextDataset(
         db_url,
@@ -49,6 +52,7 @@ def create_text_datasets(
         vocab,
         spacy_model,
         test_indices,
+        preprocessing_pipeline,
     )
     return train_dataset, val_dataset, test_dataset
 

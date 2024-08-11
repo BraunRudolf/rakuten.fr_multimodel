@@ -1,24 +1,30 @@
 import json
 import os
+import re
 from collections import Counter
 from typing import Optional
 
 import pandas as pd
 import spacy
 import torch
+from bs4 import BeautifulSoup
 from sklearn.model_selection import train_test_split
 from sqlalchemy import MetaData, Table, create_engine, select
 from torch.nn.utils.rnn import pad_sequence
 
 
 # NOTE: Is this realy preprocessing?
-def build_vocab(data: list, spacy_model="fr_core_news_sm", save_dir=None):
+def build_vocab(
+    data: list, preprocessing_pipeline=[], spacy_model="fr_core_news_sm", save_dir=None
+):
     # TODO: add progress bar
     counter = Counter()
     nlp = spacy.load(spacy_model)
 
     for text in data:
         doc = nlp(text)
+        for func in preprocessing_pipeline:
+            text = func(text)
         tokens = [token.text for token in doc]
         counter.update(tokens)
 
@@ -182,3 +188,24 @@ def retrieve_image_info(
         result = conn.execute(query).fetchall()
         # WARNING: HARDCODED Values
         return pd.DataFrame(result, columns=["id", "image_name", "label"])
+
+
+# Text preprocessing steps
+
+
+def to_lower(str):
+    return str.lower()
+
+
+def remove_punctuation(text, punctuation_pattern=re.compile(r"[^\w\s]")):
+
+    return punctuation_pattern.sub("", text)
+
+
+def remove_html(text):
+    soup = BeautifulSoup(text, "html.parser")
+    return soup.get_text()
+
+
+def remove_white_space(text):
+    return text.strip()

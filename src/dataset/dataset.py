@@ -30,7 +30,7 @@ class RakutenTextDataset(Dataset):
         self.mapping_column = mapping_column
         self.vocab = vocab
         self.nlp = spacy_model
-        # self.tokenizer = spacy_model.tokenizer
+        self.tokenizer = spacy_model.tokenizer
         self.preprocessing_pipeline = preprocessing_pipeline or []
         self.indices = indices
         self.metadata = MetaData()
@@ -47,16 +47,18 @@ class RakutenTextDataset(Dataset):
         return engine
 
     def preprocess_text(self, text):
-        if self.preprocessing_pipeline is None:
-            return self.nlp(text)
+        if not self.preprocessing_pipeline:
             return [token.text for token in self.tokenizer(text)]
+            return self.nlp(text)
 
         for func in self.preprocessing_pipeline:
             text = func(text)
+        return [token.text for token in self.tokenizer(text)]
         return self.nlp(text)
-        # return [token.text for token in self.tokenizer(text)]
 
     def text_to_tensor(self, doc):
+        tensor = [self.vocab[token] for token in doc if token in self.vocab]
+        return torch.tensor(tensor, dtype=torch.long)
         # preprocessed_text = self.preprocess_text(doc)
         tokens = [token.text for token in doc]
         tensor = [self.vocab.get(token, self.vocab.get("<unk>")) for token in tokens]
@@ -64,8 +66,6 @@ class RakutenTextDataset(Dataset):
         # Check for None values in tensor
         if any(val is None for val in tensor):
             raise ValueError("Vocabulary lookup returned None for some tokens.")
-        return torch.tensor(tensor, dtype=torch.long)
-        tensor = [self.vocab[token] for token in preprocessed_text if token in self.vocab]
         return torch.tensor(tensor, dtype=torch.long)
 
     def __len__(self):
