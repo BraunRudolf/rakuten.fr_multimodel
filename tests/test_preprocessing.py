@@ -1,6 +1,13 @@
 import pytest
 
-from src.dataset.preprocess import remove_html, remove_punction, remove_white_space, to_lower
+from src.dataset.preprocess import (
+    create_name_from_list,
+    process_func_name,
+    remove_html,
+    remove_punctuation,
+    remove_white_space,
+    to_lower,
+)
 
 
 @pytest.fixture()
@@ -73,6 +80,12 @@ def no_insited_tailing_and_leading_white_space_text():
     return "Desert Child - Jeu En"
 
 
+# creaate name from list
+@pytest.fixture()
+def func_list():
+    return ["to_lower", "remove_punctuation", "remove_html", "remove_white_space"]
+
+
 def test_to_lower(original_text, lower_text):
     new_text = to_lower(original_text)
 
@@ -81,7 +94,7 @@ def test_to_lower(original_text, lower_text):
 
 
 def test_remove_punctuation(original_text, no_punctuation_text):
-    new_text = remove_punction(no_punctuation_text)
+    new_text = remove_punctuation(no_punctuation_text)
 
     assert original_text != new_text, "Text didn't change"
     assert no_punctuation_text == new_text, "Text didn't change as expected"
@@ -135,3 +148,19 @@ def test_remove_white_space(original_text, no_white_space_text):
 
     assert original_text != new_text, "Text didn't change"
     assert no_white_space_text == new_text, "Text didn't change as expected"
+
+
+def test_process_func_name():
+    name = process_func_name("remove_punctuation")
+    assert "_rpu" == name
+
+
+def test_process_func_name_not_string():
+    name = process_func_name(remove_punctuation)
+    assert "_rpu" == name
+
+
+def test_create_string_from_list(func_list):
+    path_string = create_name_from_list(func_list)
+
+    assert "_tlo_rpu_rht_rws" == path_string

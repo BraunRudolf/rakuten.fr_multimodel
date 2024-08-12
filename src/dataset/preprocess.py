@@ -1,13 +1,14 @@
 import json
 import os
 import re
+import warnings
 from collections import Counter
 from typing import Optional
 
 import pandas as pd
 import spacy
 import torch
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning
 from sklearn.model_selection import train_test_split
 from sqlalchemy import MetaData, Table, create_engine, select
 from torch.nn.utils.rnn import pad_sequence
@@ -22,9 +23,9 @@ def build_vocab(
     nlp = spacy.load(spacy_model)
 
     for text in data:
-        doc = nlp(text)
         for func in preprocessing_pipeline:
             text = func(text)
+        doc = nlp(text)
         tokens = [token.text for token in doc]
         counter.update(tokens)
 
@@ -203,9 +204,77 @@ def remove_punctuation(text, punctuation_pattern=re.compile(r"[^\w\s]")):
 
 
 def remove_html(text):
+    warnings.filterwarnings("ignore", category=MarkupResemblesLocatorWarning)
     soup = BeautifulSoup(text, "html.parser")
     return soup.get_text()
 
 
 def remove_white_space(text):
     return text.strip()
+
+
+# utils
+
+
+def process_func_name(func) -> str:
+    # NOTE: remove check and add type?
+    # - like: def process_func_name(func: function) -> str:
+    # NOTE: name could be more precise
+    """
+    Function to process function names
+    Splits string by '_',
+    if there is only one word, it takes the first letter of the first word and the first two letters of the second
+    else it takes the first letter of each word
+    params:
+        func: function name
+    returns:
+        abbreviated function name starting with '_'
+    """
+    if isinstance(func, str):
+        parts = func.split("_")
+        return (
+            f"_{parts[0][0]}{parts[1][:2]}"
+            if len(parts) == 2
+            else f"_{''.join(p[0] for p in parts)}"
+        )
+
+    else:
+        func_name_str = func.__name__
+        parts = func_name_str.split("_")
+        return (
+            f"_{parts[0][0]}{parts[1][:2]}"
+            if len(parts) == 2
+            else f"_{''.join(p[0] for p in parts)}"
+        )
+
+
+def create_name_from_list(func_list: list):
+    """
+    Function to create a name from a list of function names
+    params:
+        func_list: list of function names
+    returns:
+        abbreviated name of the combined function names
+    """
+    if not func_list:
+        return ""
+
+    return "".join(process_func_name(func) for func in func_list)
+
+
+def choose_vocab_path(preprocessing_pipeline: list, text_column: str, vocab_base_path: str):
+    if preprocessing_pipeline:
+        pre_piple_abr = create_name_from_list(preprocessing_pipeline)
+        return os.path.join(vocab_base_path, text_column, pre_piple_abr)  # type: ignore
+    else:
+        return os.path.join(vocab_base_path, text_column)  # type: ignore
+
+
+def create_path_if_not_exist(path):
+    if not os.path.exists(path):
+        # make dir
+        print(f"Vocabulary path '{path}' does not exist. Creating...")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        os.makedirs(path, exist_ok=True)
+    else:
+        print(f"Vocabulary path '{path}' already exists. Skipping creation...")

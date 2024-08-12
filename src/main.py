@@ -17,6 +17,8 @@ from src.dataset.data_loader import (
 )
 from src.dataset.preprocess import (
     build_vocab,
+    choose_vocab_path,
+    create_path_if_not_exist,
     fusion_collate_fn,
     load_vocab_and_nlp,
     remove_html,
@@ -68,36 +70,29 @@ TEXT_COLUMN = os.getenv("TEXT_COLUMN")
 LABLE_COLUMN = os.getenv("LABLE_COLUMN")
 MAPPING_COLUMN = os.getenv("MAPPING_COLUMN")
 IMAGE_FOLDER = os.getenv("IMAGE_FOLDER")
+VOCAB_BASE_PATH = os.getenv("VOCAB_PATH")
 
 indices = retrieve_indices(DB_URL, TABLE_NAME, ID_COLUMN)  # type: ignore
 train_indices, val_indices, test_indices = train_val_test_indices(indices, 0.8, 0.1, 0.1)
 train_indices.sort(reverse=True)
 val_indices.sort(reverse=True)
 test_indices.sort(reverse=True)
+preprocessing_pipeline = [remove_html, remove_white_space, to_lower]
 text = True
 image = False
 fusion = False
 
 if text:
-    # TODO: remove from main to seperate script that run periodically with full dataset?
-    # add create vocab
-    # add load vocab
-    # add check for vocab
-    vocab_base_path = os.getenv("VOCAB_PATH")
-    if not vocab_base_path:
+    if not VOCAB_BASE_PATH:
         raise EnvironmentError("The environment variable VOCAB_PATH is not set.")
 
-    vocab_path = os.path.join(os.getenv("VOCAB_PATH"), TEXT_COLUMN)  # type: ignore
+    vocab_path = choose_vocab_path(preprocessing_pipeline, TEXT_COLUMN, VOCAB_BASE_PATH)
+    create_path_if_not_exist(vocab_path)
 
-    if not os.path.exists(vocab_path):
-        # make dir
-        print(f"Vocabulary path '{vocab_path}' does not exist. Creating new tokenizer and vocab.")
-        os.makedirs(os.path.dirname(vocab_path), exist_ok=True)
-        os.makedirs(vocab_path, exist_ok=True)
-
+    if os.listdir(vocab_path) == []:
         vocab, nlp = build_vocab(
             retrieve_vocab_dataset(DB_URL, TABLE_NAME, "id", TEXT_COLUMN, train_indices),  # type: ignore
-            preprocessing_pipeline=[to_lower, remove_html, remove_punctuation, remove_white_space],
+            preprocessing_pipeline=preprocessing_pipeline,
             save_dir=vocab_path,
         )
     else:
