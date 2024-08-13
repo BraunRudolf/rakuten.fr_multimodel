@@ -38,8 +38,8 @@ IMAGE_FOLDER=images
 
 IMAGE_TRAIN_FOLDER=image_train
 
-NUM_OF_WORKERS=24
-PIN_MEMORY=True
+NUM_OF_WORKERS=0
+PIN_MEMORY=False
 
 ID_COLUMN=id
 
@@ -61,6 +61,8 @@ MAPPING_COLUMN=prdtypecode
 ## train the model
 if using local mlflow run
 `make train_local_mlflow`
+Since the sqlite database is used the number of workers is set to 0, this can result in a slow training time.
+
 
 otherwise 
 `make train`
