@@ -32,6 +32,29 @@ MLFLOW_EXPERIMENT_NAME
 
 VOCAB_PATH=vocab/
 
+IMAGE_ZIP=images.zip
+
+IMAGE_FOLDER=images
+
+IMAGE_TRAIN_FOLDER=image_train
+
+NUM_OF_WORKERS=24
+PIN_MEMORY=True
+
+ID_COLUMN=id
+
+IMAGE_COLUMN=image_name
+
+TABLE_NAME=rakuten_products
+
+MAPPING_TABLE_NAME=prdtypecode_label_mapping
+
+TEXT_COLUMN=text
+
+LABLE_COLUMN=label
+
+MAPPING_COLUMN=prdtypecode
+
 ## install dependencies with poetry
 `make install`
 
