@@ -1,10 +1,12 @@
 import os
-from typing import Callable, Dict, List, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
+import spacy
 import torch
 from sqlalchemy import MetaData, create_engine, select
 from torch.utils.data import DataLoader, Dataset
 from torchvision import io
+from transformers import BarthezTokenizer
 
 
 class RakutenTextDataset(Dataset):
@@ -17,7 +19,7 @@ class RakutenTextDataset(Dataset):
         label_column: str,
         mapping_column: str,
         vocab: dict,
-        spacy_model,
+        spacy_model: spacy.language.Language,
         indices: List[int],
         preprocessing_pipeline: List[Callable] = [],
     ):
@@ -130,3 +132,79 @@ class RakutenFusionDataset(Dataset):
         if label_text != label_image:
             raise Exception()
         return text, image, label_text
+
+
+class RakutenTextTransformerDataset(Dataset):
+    def __init__(
+        self,
+        db_url: str,
+        table_name: str,
+        mapping_table_name: str,
+        text_column: str,
+        label_column: str,
+        mapping_column: str,
+        indices: List[int],
+        tokenizer: Optional[BarthezTokenizer] = None,  # Use BART tokenizer
+        preprocessing_pipeline: List[Callable] = [],
+        max_length: int = 512,
+    ):
+        self.db_url = db_url
+        self.table_name = table_name
+        self.mapping_table_name = mapping_table_name
+        self.text_column = text_column
+        self.label_column = label_column
+        self.mapping_column = mapping_column
+        self.tokenizer = tokenizer
+        self.preprocessing_pipeline = preprocessing_pipeline or []
+        self.indices = indices
+        self.metadata = MetaData()
+        self.engine = self.connect_to_db()
+        self.conn = self.engine.connect()
+        self.max_length = max_length
+
+    def connect_to_db(self):
+        engine = create_engine(self.db_url)
+        self.metadata.reflect(engine)
+        self.table = self.metadata.tables[self.table_name]
+        self.mapping_table = self.metadata.tables[self.mapping_table_name]
+        return engine
+
+    def preprocess_text(self, text):
+        for func in self.preprocessing_pipeline:
+            text = func(text)
+        return text
+
+    def text_to_tensor(self, text):
+        encoding = self.tokenizer(
+            text,
+            max_length=self.max_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt",
+        )
+        return (
+            encoding.input_ids.squeeze(),
+            encoding.attention_mask.squeeze(),
+        )
+
+    def __len__(self):
+        return len(self.indices)
+
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor, Union[str, int]]:
+        index = self.indices[idx]
+        with self.engine.connect() as conn:
+            stmt = (
+                select(self.table.c[self.text_column], self.mapping_table.c[self.label_column])
+                .outerjoin(
+                    self.mapping_table,
+                    self.table.c[self.mapping_column] == self.mapping_table.c[self.mapping_column],
+                )
+                .where(self.table.c.id == index)
+            )
+            result = conn.execute(stmt).fetchone()
+
+        text, label = result
+        text = self.preprocess_text(text)
+        text_tensor, attention_mask = self.text_to_tensor(text)
+
+        return text_tensor, attention_mask, label
