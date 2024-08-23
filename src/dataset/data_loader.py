@@ -1,6 +1,11 @@
 from torch.utils.data import DataLoader
 
-from src.dataset.dataset import RakutenFusionDataset, RakutenImageDataset, RakutenTextDataset
+from src.dataset.dataset import (
+    RakutenFusionDataset,
+    RakutenImageDataset,
+    RakutenTextDataset,
+    RakutenTextTransformerDataset,
+)
 from src.dataset.preprocess import retrieve_image_info
 
 
@@ -182,3 +187,56 @@ def create_dataloaders(
     )
 
     return train_loader, val_loader, test_loader
+
+
+def create_text_transformer_datasets(
+    db_url,
+    table_name,
+    mapping_table_name,
+    text_column,
+    label_column,
+    mapping_column,
+    # vocab,
+    tokenizer,
+    train_indices,
+    val_indices,
+    test_indices,
+    preprocessing_pipeline=[],
+):
+    train_dataset = RakutenTextTransformerDataset(
+        db_url,
+        table_name,
+        mapping_table_name,
+        text_column,
+        label_column,
+        mapping_column,
+        # vocab,
+        train_indices,
+        tokenizer,
+        preprocessing_pipeline,
+    )
+    val_dataset = RakutenTextTransformerDataset(
+        db_url,
+        table_name,
+        mapping_table_name,
+        text_column,
+        label_column,
+        mapping_column,
+        # vocab,
+        val_indices,
+        tokenizer,
+        preprocessing_pipeline,
+    )
+    test_dataset = RakutenTextTransformerDataset(
+        db_url,
+        table_name,
+        mapping_table_name,
+        text_column,
+        label_column,
+        mapping_column,
+        # vocab,
+        test_indices,
+        tokenizer,
+        preprocessing_pipeline,
+    )
+    return train_dataset, val_dataset, test_dataset
