@@ -32,7 +32,7 @@ vocab_size = 500
 embedding_dim = 250
 hidden_dim = 128
 num_classes = 27
-batch_size = 32
+batch_size = 16
 num_epochs = 20
 learning_rate = 0.001
 
@@ -71,7 +71,6 @@ fusion = False
 model_name = "moussaKam/barthez"
 
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_classes)
 
 train_text_dataset, val_text_dataset, test_text_dataset = create_text_transformer_datasets(
     db_url=DB_URL,
@@ -97,6 +96,10 @@ train_text_loader, val_text_loader, test_text_loader = create_dataloaders(
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=num_classes).to(
+    device
+)
 
 text_optimizer = optim.Adam(model.parameters(), lr=0.001)
 text_criterion = nn.CrossEntropyLoss()

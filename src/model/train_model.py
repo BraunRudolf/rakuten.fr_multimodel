@@ -360,8 +360,7 @@ def validate_classification_bart_model(
     val_correct = 0
 
     with torch.no_grad():
-        for inputs, targets in tqdm(val_loader, desc="Evaluation"):
-            input_ids, attention_mask = inputs
+        for input_ids, attention_mask, targets in tqdm(val_loader, desc="Evaluation"):
             input_ids = input_ids.to(device)
             attention_mask = attention_mask.to(device)
             targets = targets.to(device)
@@ -371,7 +370,7 @@ def validate_classification_bart_model(
             total_val_loss += val_loss.item() * targets.size(0)
             total_val_samples += targets.size(0)
 
-            predictions = torch.argmax(outputs, dim=1)
+            predictions = torch.argmax(outputs.logits, dim=1)
             val_correct += (predictions == targets.view(-1)).sum().item()
 
     avg_val_loss = total_val_loss / total_val_samples
@@ -392,16 +391,15 @@ def evaluate_classification_bart_model(
     targets_list = []
 
     with torch.no_grad():
-        for inputs, targets in tqdm(test_loader, desc="Training"):
+        for input_ids, attention_mask, targets in tqdm(test_loader, desc="Training"):
 
-            input_ids, attention_mask = inputs
             input_ids = input_ids.to(device)
             attention_mask = attention_mask.to(device)
             targets = targets.to(device)
 
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
 
-            _, predicted_labels = torch.max(outputs, dim=1)
+            _, predicted_labels = torch.max(outputs.logits, dim=1)
 
             total_test_samples += targets.size(0)
             correct_predictions += (predicted_labels == targets).sum().item()
