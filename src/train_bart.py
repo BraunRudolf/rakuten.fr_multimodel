@@ -35,6 +35,7 @@ num_classes = 27
 batch_size = 16
 num_epochs = 20
 learning_rate = 0.001
+model_state_dict_path = os.getenv("MODEL_STATE_DICT_PATH")
 
 MLFLOW_SERVER_URI = os.getenv("MLFLOW_SERVER_URI")
 MLFLOW_EXPERIMENT_NAME = os.getenv("MLFLOW_EXPERIMENT_NAME")
@@ -133,3 +134,6 @@ with mlflow.start_run():
         params=params,
         log_to_mlflow=True,
     )
+
+    mlflow.pytorch.log_model(model, "model")
+    torch.save(model.state_dict(), model_state_dict_path)

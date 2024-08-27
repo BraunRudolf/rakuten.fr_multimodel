@@ -440,6 +440,9 @@ def train_eval_bart_classification_loop(
         lr_adjusted = scheduler.on_epoch_end(epoch, val_loss)
         early_stopping(val_loss, lr_adjusted=lr_adjusted)
 
+        torch.save(model.state_dict(), f"model_epoch_{epoch}.pt")
+        torch.save(optimizer.state_dict(), f"optimizer_epoch_{epoch}.pt")
+
         print(
             f"Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train Accuracy: {train_accuracy:.2f}%, Val Loss: {val_loss:.4f}, Val Accuracy: {val_accuracy:.2f}%"
         )
