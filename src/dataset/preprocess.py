@@ -5,6 +5,7 @@ import warnings
 from collections import Counter
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 import spacy
 import torch
@@ -12,6 +13,7 @@ from bs4 import BeautifulSoup, MarkupResemblesLocatorWarning
 from sklearn.model_selection import train_test_split
 from sqlalchemy import MetaData, Table, create_engine, select
 from torch.nn.utils.rnn import pad_sequence
+from torch.utils.data import SubsetRandomSampler, WeightedRandomSampler
 
 
 # NOTE: Is this realy preprocessing?
@@ -278,3 +280,49 @@ def create_path_if_not_exist(path):
         os.makedirs(path, exist_ok=True)
     else:
         print(f"Vocabulary path '{path}' already exists. Skipping creation...")
+
+
+def get_class_weights(dataset, targets):
+    """
+    Computes weights inversely proportional to class frequencies for oversampling
+    """
+    class_sample_count = torch.tensor([(targets == t).sum() for t in torch.unique(targets)])
+    weight = 1.0 / class_sample_count.float()
+    sample_weights = torch.tensor([weight[t] for t in targets])
+    return sample_weights
+
+
+def get_oversampling_sampler(dataset, targets):
+    """
+    Creates a WeightedRandomSampler for oversampling
+    """
+    sample_weights = get_class_weights(dataset, targets)
+    sampler = WeightedRandomSampler(sample_weights, len(sample_weights), replacement=True)
+    return sampler
+
+
+def get_undersampling_indices(targets):
+    """
+    Creates indices for undersampling the majority class
+    """
+    # Get class indices
+    class_indices = {c: np.where(targets == c)[0] for c in np.unique(targets)}
+
+    # Find the size of the minority class
+    min_class_count = min([len(class_indices[c]) for c in class_indices])
+
+    # Randomly sample from each class to balance the dataset
+    undersample_indices = np.hstack(
+        [np.random.choice(class_indices[c], min_class_count, replace=False) for c in class_indices]
+    )
+
+    return undersample_indices
+
+
+def get_undersampling_sampler(dataset, targets):
+    """
+    Creates a SubsetRandomSampler for undersampling
+    """
+    undersample_indices = get_undersampling_indices(targets)
+    sampler = SubsetRandomSampler(undersample_indices)
+    return sampler

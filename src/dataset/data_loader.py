@@ -1,3 +1,4 @@
+import torch
 from torch.utils.data import DataLoader
 
 from src.dataset.dataset import (
@@ -6,7 +7,11 @@ from src.dataset.dataset import (
     RakutenTextDataset,
     RakutenTextTransformerDataset,
 )
-from src.dataset.preprocess import retrieve_image_info
+from src.dataset.preprocess import (
+    get_oversampling_sampler,
+    get_undersampling_sampler,
+    retrieve_image_info,
+)
 
 
 def create_text_datasets(
@@ -155,20 +160,51 @@ def create_dataloaders(
     pin_memory,
     shuffle,
     collate_fn=None,
+    sampling_mode=None,
 ):
     """
     Function to create a set of train/val/test dataloaders
     """
 
     # Creating dataloaders
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
-        collate_fn=collate_fn,
-    )
+
+    # Check if sampling mode is specified
+    if sampling_mode:
+        # Retrieve the labels for the dataset
+        targets = torch.tensor(
+            [sample[1] for sample in train_dataset]
+        )  # Assuming train_dataset returns (data, label)
+
+        # Choose the appropriate sampler based on the mode
+        if sampling_mode == "oversample":
+            sampler = get_oversampling_sampler(train_dataset, targets)
+        elif sampling_mode == "undersample":
+            sampler = get_undersampling_sampler(train_dataset, targets)
+        else:
+            raise ValueError(
+                f"Invalid sampling_mode: {sampling_mode}. Use 'oversample' or 'undersample'."
+            )
+
+        # Set the DataLoader to use the sampler instead of shuffling
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            sampler=sampler,  # Use the sampler here
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            collate_fn=collate_fn,
+        )
+    else:
+        # Default behavior with shuffling
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+            collate_fn=collate_fn,
+        )
+
     val_loader = DataLoader(
         val_dataset,
         batch_size=batch_size,

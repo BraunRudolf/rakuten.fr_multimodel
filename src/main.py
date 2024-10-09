@@ -128,6 +128,7 @@ if text:
         num_workers=NUM_OF_WORKERS,
         pin_memory=PIN_MEMORY,
         collate_fn=text_collate_fn,
+        sampling_mode="oversample",
     )
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
