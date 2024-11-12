@@ -9,6 +9,7 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.12"
 sqlalchemy = "^2.0.31"
+numpy = "^1.23.0"
 torch = "^2.4.0"
 pandas = "^2.2.2"
 nltk = "^3.8.1"
